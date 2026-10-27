@@ -1,9 +1,8 @@
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import httpx
 
-from personas import PERSONAS
 from agreement import AgreementResult
 from agreement_evaluator import (
     AgreementEvaluationError,
@@ -22,9 +21,21 @@ class ChatRequest(BaseModel):
 
 class DialogueRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=500)
-    stakeholder_1: str
-    stakeholder_2: str
+    stakeholder_1: str = Field(min_length=2, max_length=100)
+    stakeholder_2: str = Field(min_length=2, max_length=100)
     rounds: int = Field(default=2, ge=1, le=5)
+
+    @field_validator("stakeholder_1", "stakeholder_2")
+    @classmethod
+    def validate_stakeholder_name(cls, value: str) -> str:
+        value = value.strip()
+
+        if len(value) < 2:
+            raise ValueError(
+                "Stakeholder names must contain at least 2 characters."
+            )
+
+        return value
 
 
 @app.get("/")
@@ -37,31 +48,12 @@ async def health_check():
     return {"status": "healthy"}
 
 
-@app.get("/personas")
-async def list_personas():
-    """Return available stakeholder choices without exposing prompts."""
-    return {
-        "personas": [
-            {
-                "key": key,
-                "name": persona["name"],
-                "role": persona["role"],
-                "goals": persona["goals"],
-                "priorities": persona["priorities"],
-            }
-            for key, persona in PERSONAS.items()
-        ]
-    }
-
-
 async def generate_persona_response(
-    persona_key: str,
+    stakeholder_name: str,
     topic: str,
     transcript: list,
     closing: bool = False,
 ) -> str:
-    persona = PERSONAS[persona_key]
-
     history = "\n".join(
         f"Turn {item['turn']} - {item['speaker']}: "
         f"{item['message']}"
@@ -71,6 +63,19 @@ async def generate_persona_response(
     if not history:
         history = "No previous discussion."
 
+    system_prompt = (
+        f"You are {stakeholder_name}, participating in a professional "
+        "cybersecurity stakeholder discussion. "
+        f"Represent the perspective of {stakeholder_name} based on "
+        "the role or responsibilities implied by that title. "
+        "Explain your reasoning clearly, consider the other "
+        "stakeholder's concerns, and seek a practical, safe, "
+        "and implementable agreement. "
+        "Do not impersonate the other stakeholder. "
+        "Do not claim that agreement exists unless the discussion "
+        "supports it."
+    )
+
     closing_instruction = ""
     if closing:
         closing_instruction = (
@@ -78,26 +83,25 @@ async def generate_persona_response(
             "the decision or action plan you can support, including "
             "what both stakeholders have agreed on if the discussion "
             "supports it. If important disagreements remain, state "
-            "them honestly and identify a practical next step both "
-            "stakeholders can take. Do not invent mutual agreement."
+            "them honestly and identify a practical next step. "
+            "Do not invent mutual agreement."
         )
 
     messages = [
         {
             "role": "system",
-            "content": persona["system_prompt"],
+            "content": system_prompt,
         },
         {
             "role": "user",
             "content": (
                 f"Cybersecurity discussion topic: {topic}\n\n"
                 f"Discussion so far:\n{history}\n\n"
-                "Provide your next contribution as this stakeholder. "
-                "Address the topic directly, explain your reasoning, "
-                "and respond to the other stakeholder's points when "
-                "available. Keep your response concise and practical. "
-                "Do not impersonate the other stakeholder. "
-                "Do not claim agreement unless the discussion supports it."
+                "Provide your next contribution as your assigned "
+                "stakeholder. Address the topic directly, explain "
+                "your reasoning, and respond to the other "
+                "stakeholder's points when available. "
+                "Keep your response concise and practical. "
                 f"{closing_instruction}"
             ),
         },
@@ -122,7 +126,7 @@ async def generate_persona_response(
 async def chat(request: ChatRequest):
     try:
         reply = await generate_persona_response(
-            persona_key="security_officer",
+            stakeholder_name="Cybersecurity Assistant",
             topic=request.message,
             transcript=[],
         )
@@ -144,56 +148,40 @@ async def chat(request: ChatRequest):
 
 @app.post("/dialogue")
 async def dialogue(request: DialogueRequest):
-    stakeholder_order = [
-        request.stakeholder_1,
-        request.stakeholder_2,
-    ]
+    stakeholder_1 = request.stakeholder_1.strip()
+    stakeholder_2 = request.stakeholder_2.strip()
 
-    # Validate the user's selections before calling Ollama.
-    for stakeholder_key in stakeholder_order:
-        if stakeholder_key not in PERSONAS:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Unknown stakeholder '{stakeholder_key}'. "
-                    "Use GET /personas to see available choices."
-                ),
-            )
-
-    if request.stakeholder_1 == request.stakeholder_2:
+    if stakeholder_1.casefold() == stakeholder_2.casefold():
         raise HTTPException(
             status_code=400,
-            detail="Please select two different stakeholders.",
+            detail="Please provide two different stakeholders.",
         )
 
+    stakeholder_order = [stakeholder_1, stakeholder_2]
     transcript = []
 
     try:
         # Generate the regular discussion rounds.
         for turn in range(1, request.rounds + 1):
-            for persona_key in stakeholder_order:
-                persona = PERSONAS[persona_key]
-
+            for stakeholder_name in stakeholder_order:
                 reply = await generate_persona_response(
-                    persona_key=persona_key,
+                    stakeholder_name=stakeholder_name,
                     topic=request.topic,
                     transcript=transcript,
                 )
 
                 transcript.append({
                     "turn": turn,
-                    "speaker": persona["name"],
+                    "speaker": stakeholder_name,
                     "message": reply,
                 })
 
-        # Add an explicit closing statement from each stakeholder.
+        # Give both stakeholders an explicit closing statement.
         closing_turn = request.rounds + 1
 
-        for persona_key in stakeholder_order:
-            persona = PERSONAS[persona_key]
-
+        for stakeholder_name in stakeholder_order:
             reply = await generate_persona_response(
-                persona_key=persona_key,
+                stakeholder_name=stakeholder_name,
                 topic=request.topic,
                 transcript=transcript,
                 closing=True,
@@ -201,11 +189,11 @@ async def dialogue(request: DialogueRequest):
 
             transcript.append({
                 "turn": closing_turn,
-                "speaker": persona["name"],
+                "speaker": stakeholder_name,
                 "message": reply,
             })
 
-        # Evaluate the completed dialogue using Commit 7's evaluator.
+        # Evaluate the completed dialogue.
         agreement: AgreementResult = await evaluate_agreement(
             topic=request.topic,
             transcript=transcript,
@@ -217,11 +205,9 @@ async def dialogue(request: DialogueRequest):
             "model": MODEL_NAME,
             "stakeholders": [
                 {
-                    "key": key,
-                    "name": PERSONAS[key]["name"],
-                    "role": PERSONAS[key]["role"],
+                    "name": stakeholder_name,
                 }
-                for key in stakeholder_order
+                for stakeholder_name in stakeholder_order
             ],
             "dialogue": transcript,
             "agreement": agreement.model_dump(),
