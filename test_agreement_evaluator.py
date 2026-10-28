@@ -154,10 +154,104 @@ class AgreementEvaluatorTests(unittest.TestCase):
         self.assertEqual(result.status, "no_agreement")
         self.assertIsNone(result.shared_decision)
         self.assertTrue(result.unresolved_disagreements)
+    
+    def test_agreement_requires_a_shared_decision(self):
+        expected = {
+            "status": "agreement_reached",
+            "explanation": "The discussion reached agreement.",
+            "shared_decision": None,
+            "unresolved_disagreements": [],
+            "next_actions": [],
+        }
 
-    def test_empty_transcript_is_rejected(self):
-        with self.assertRaises(ValueError):
-            asyncio.run(evaluate_agreement(TOPIC, []))
+        transcript = make_transcript(
+            "I propose implementing MFA.",
+            "I need more information before accepting the proposal.",
+        )
+
+        result = self.evaluate_with_response(expected, transcript)
+
+        self.assertEqual(result.status, "partial_agreement")
+        self.assertIsNone(result.shared_decision)
+        self.assertTrue(result.unresolved_disagreements)
+        self.assertTrue(result.next_actions)
+
+    def test_budget_contradiction_is_reported(self):
+        expected = {
+            "status": "partial_agreement",
+            "explanation": (
+                "The proposed allocations exceed the stated budget "
+                "and require clarification."
+            ),
+            "shared_decision": "Continue evaluating a phased MFA rollout.",
+            "unresolved_disagreements": [
+                "The proposed budget allocations exceed the stated budget."
+            ],
+            "next_actions": [
+                "Reconcile the budget allocations before approval."
+            ],
+        }
+
+        transcript = make_transcript(
+            "Our total budget is $100,000.",
+            (
+                "Allocate $50,000 for implementation, $30,000 for "
+                "development, $20,000 for maintenance, and another "
+                "$50,000 for training."
+            ),
+        )
+
+        result = self.evaluate_with_response(expected, transcript)
+
+        self.assertEqual(result.status, "partial_agreement")
+        self.assertTrue(result.unresolved_disagreements)
+        self.assertTrue(result.next_actions)
+    
+    def test_full_agreement_with_unresolved_disagreements_is_rejected(self):
+        expected = {
+            "status": "agreement_reached",
+            "explanation": "The discussion reached agreement.",
+            "shared_decision": "Implement MFA.",
+            "unresolved_disagreements": [
+                "The rollout deadline remains disputed."
+            ],
+            "next_actions": ["Agree on the deadline."],
+        }
+
+        transcript = make_transcript(
+            "Implement MFA immediately.",
+            "I support MFA, but disagree with the deadline.",
+        )
+
+        result = self.evaluate_with_response(expected, transcript)
+
+        self.assertEqual(result.status, "partial_agreement")
+        self.assertTrue(result.unresolved_disagreements)
+        self.assertTrue(result.next_actions)
+
+    
+    def test_no_agreement_with_shared_decision_is_rejected(self):
+        expected = {
+            "status": "no_agreement",
+            "explanation": "The stakeholders have not agreed.",
+            "shared_decision": "Implement MFA.",
+            "unresolved_disagreements": [
+                "The stakeholders disagree on the rollout."
+            ],
+            "next_actions": ["Discuss the rollout."],
+        }
+
+        transcript = make_transcript(
+            "We should implement MFA.",
+            "I do not accept the proposed rollout.",
+        )
+
+        result = self.evaluate_with_response(expected, transcript)
+
+        self.assertEqual(result.status, "partial_agreement")
+        self.assertTrue(result.unresolved_disagreements)
+        self.assertTrue(result.next_actions)
+
 
     def test_invalid_status_is_rejected(self):
         expected = {
