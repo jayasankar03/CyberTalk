@@ -79,12 +79,17 @@ async def generate_persona_response(
     closing_instruction = ""
     if closing:
         closing_instruction = (
-            "\nThis is your final closing statement. Clearly state "
-            "the decision or action plan you can support, including "
-            "what both stakeholders have agreed on if the discussion "
-            "supports it. If important disagreements remain, state "
-            "them honestly and identify a practical next step. "
-            "Do not invent mutual agreement."
+            "\nThis is your final closing statement in the discussion. "
+            "Summarize the shared decision or action plan that both "
+            "stakeholders can support. Explicitly state what you and "
+            "the other stakeholder agree to do next. "
+            "If you disagree on the original proposal, identify a "
+            "practical next step that both stakeholders can accept, "
+            "such as a pilot, further assessment, or a follow-up review. "
+            "Clearly distinguish an agreed action from an unresolved "
+            "disagreement. Never falsely claim that the other "
+            "stakeholder has accepted a proposal they have rejected. "
+            "End with a clear, concise statement of the shared next step."
         )
 
     messages = [

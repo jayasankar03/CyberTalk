@@ -120,6 +120,77 @@ class DialogueRequestTests(unittest.TestCase):
         evaluated_transcript = mock_evaluate.await_args.kwargs["transcript"]
         self.assertEqual(len(evaluated_transcript), 4)
 
+    @patch("main.evaluate_agreement", new_callable=AsyncMock)
+    @patch("main.generate_persona_response", new_callable=AsyncMock)
+    def test_closing_statements_follow_all_regular_rounds(
+        self,
+        mock_generate,
+        mock_evaluate,
+    ):
+        mock_generate.side_effect = [
+            "First stakeholder, round one.",
+            "Second stakeholder, round one.",
+            "First stakeholder, round two.",
+            "Second stakeholder, round two.",
+            "First stakeholder closing statement.",
+            "Second stakeholder closing statement.",
+        ]
+
+        mock_evaluate.return_value = AgreementResult(
+            status="agreement_reached",
+            explanation="Both stakeholders agree on the next step.",
+            shared_decision="Conduct a joint security assessment.",
+            unresolved_disagreements=[],
+            next_actions=["Schedule the security assessment."],
+        )
+
+        response = client.post(
+            "/dialogue",
+            json={
+                "topic": "How should we assess cloud security?",
+                "stakeholder_1": "Security Architect",
+                "stakeholder_2": "Cloud Engineer",
+                "rounds": 2,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        dialogue = response.json()["dialogue"]
+
+        self.assertEqual(len(dialogue), 6)
+
+        self.assertEqual(
+            [item["turn"] for item in dialogue],
+            [1, 1, 2, 2, 3, 3],
+        )
+
+        self.assertEqual(
+            [item["speaker"] for item in dialogue],
+            [
+                "Security Architect",
+                "Cloud Engineer",
+                "Security Architect",
+                "Cloud Engineer",
+                "Security Architect",
+                "Cloud Engineer",
+            ],
+        )
+
+        calls = mock_generate.await_args_list
+
+        self.assertEqual(
+            [call.kwargs.get("closing", False) for call in calls],
+            [False, False, False, False, True, True],
+        )
+
+        evaluated_transcript = (
+            mock_evaluate.await_args.kwargs["transcript"]
+        )
+        self.assertEqual(len(evaluated_transcript), 6)
+
+        mock_evaluate.assert_awaited_once()
+
     def test_identical_stakeholders_are_rejected(self):
         response = client.post(
             "/dialogue",
