@@ -4,44 +4,46 @@
 
 CyberTalk is a Generative AI application that simulates a cybersecurity discussion between two stakeholder personas using a locally running Large Language Model (LLM).
 
-Users can provide a cybersecurity topic, define two stakeholder personas, and specify the number of discussion rounds. The application generates an alternating dialogue and evaluates whether the stakeholders reach an agreement.
+Users can enter a cybersecurity topic, define any two distinct stakeholder personas, and specify the number of discussion rounds. The application generates alternating dialogue, adds closing statements from both stakeholders, and evaluates whether they reach an agreement.
 
-The goal is to help explore cybersecurity decisions from different stakeholder perspectives and identify practical, mutually acceptable next steps.
+CyberTalk also provides a cybersecurity question-and-answer feature and a Streamlit user interface.
 
 ## 2. Key Features
 
-- **User-defined stakeholders:** Enter any two distinct stakeholder names or professional roles.
-- **Custom cybersecurity topics:** Explore questions, risks, policies, and security decisions.
-- **Configurable dialogue rounds:** Choose between 1 and 5 regular discussion rounds.
-- **AI-generated dialogue:** Generate responses using the locally hosted Ollama language model.
-- **Closing statements:** Give both stakeholders an opportunity to summarize their positions and proposed next steps.
-- **Structured agreement evaluation:** Report the agreement status, explanation, shared decision, unresolved disagreements, and next actions.
-- **Input validation:** Reject invalid requests and identical stakeholder names.
-- **Automated testing:** Use Python's `unittest` framework and FastAPI's test client.
+- **User-defined stakeholders:** Enter any two distinct professional roles.
+- **Custom cybersecurity topics:** Discuss cybersecurity risks, policies, and decisions.
+- **Configurable dialogue rounds:** Select between 1 and 5 regular rounds.
+- **AI-generated dialogue:** Use the locally hosted Ollama model.
+- **Closing statements:** Generate a final statement from each stakeholder.
+- **Agreement evaluation:** Return the status, explanation, shared decision, unresolved disagreements, and next actions.
+- **Cybersecurity Q&A:** Submit cybersecurity questions and receive relevant answers.
+- **Streamlit frontend:** Use a graphical interface for the application's features.
+- **Input validation:** Reject invalid requests and duplicate stakeholder names.
+- **Automated tests:** Test API endpoints, dialogue orchestration, agreement evaluation, and frontend behavior.
+- **Error handling:** Handle relevant Ollama and agreement-evaluation failures.
 
 ## 3. Technology Stack
 
 - Python
 - FastAPI
+- Streamlit
 - Pydantic
 - Uvicorn
 - Ollama
 - Llama 3.2 (3B parameter model)
 - HTTPX
-- Python `unittest`
-
-A Streamlit frontend is a planned enhancement and is not yet part of the current backend implementation.
+- pytest and Python unittest
 
 ## 4. Prerequisites
 
-Before running CyberTalk, install or prepare the following:
+Before running CyberTalk, prepare:
 
 1. Python and pip.
 2. Git.
 3. Ollama.
-4. The `llama3.2:3b` model downloaded in Ollama.
+4. The `llama3.2:3b` model downloaded through Ollama.
 
-Verify that Ollama is installed and the required model is available before testing the AI-powered endpoints.
+Verify that Ollama is running and the model is available before testing AI-powered features.
 
 ## 5. Installation and Setup
 
@@ -85,13 +87,15 @@ ollama pull llama3.2:3b
 
 Ensure Ollama is running locally and the model is available.
 
-The current backend uses the Ollama chat endpoint at:
+The application uses the Ollama chat endpoint:
 
 ```text
 http://127.0.0.1:11434/api/chat
 ```
 
-### Step 6: Start the FastAPI server
+### Step 6: Start the FastAPI backend
+
+In the first terminal, with the virtual environment activated, run:
 
 ```bash
 python -m uvicorn main:app --reload
@@ -103,7 +107,21 @@ Visit:
 
 http://127.0.0.1:8000/docs
 
-The interactive Swagger UI allows you to inspect endpoints and submit test requests.
+The Swagger interface lets you inspect API endpoints and submit requests.
+
+### Step 8: Start the Streamlit frontend
+
+Keep the FastAPI server running. Open a **second terminal** in the project directory, activate the same virtual environment, and run:
+
+```bash
+streamlit run frontend.py
+```
+
+Streamlit will display the local URL for the user interface, typically:
+
+http://localhost:8501
+
+Use the URL printed in your terminal if a different port is assigned.
 
 ## 6. API Endpoints
 
@@ -135,9 +153,23 @@ Example request:
 }
 ```
 
+### `POST /ask`
+
+Answers a cybersecurity question using the Q&A service.
+
+Example request:
+
+```json
+{
+  "question": "How can an organization improve phishing protection?"
+}
+```
+
+The service validates the question and handles relevant invalid or malformed AI responses.
+
 ### `POST /dialogue`
 
-Generates a multi-round discussion between two user-defined cybersecurity stakeholders and evaluates the resulting agreement.
+Generates a multi-round discussion between two user-defined stakeholders and evaluates the completed dialogue.
 
 Example request:
 
@@ -150,13 +182,15 @@ Example request:
 }
 ```
 
-The stakeholder names can be changed to other distinct roles. The number of regular discussion rounds must be between 1 and 5.
+Stakeholder names must be distinct. The number of regular rounds must be between 1 and 5.
 
-The API generates two stakeholder contributions per regular round, followed by two additional closing statements.
+For `rounds = 2`, the API generates four regular contributions followed by two closing statements, for six dialogue messages in total.
+
+The response includes the topic, stakeholder names, dialogue, configured model, and agreement evaluation.
 
 ## 7. Agreement Evaluation
 
-The dialogue response includes an `agreement` object containing:
+The dialogue response includes an `agreement` object with:
 
 - `status`: The evaluated agreement status.
 - `explanation`: Why that status was assigned.
@@ -164,78 +198,96 @@ The dialogue response includes an `agreement` object containing:
 - `unresolved_disagreements`: Issues that remain unresolved.
 - `next_actions`: Suggested follow-up actions.
 
-The agreement status can be:
+Supported statuses:
 
 - `agreement_reached`
 - `partial_agreement`
 - `no_agreement`
 
-The evaluator assesses the generated dialogue. Closing statements encourage the stakeholders to identify a shared next step, but they do not guarantee that genuine agreement will always be reached. Unresolved disagreements must be reported honestly.
+Closing statements encourage both stakeholders to identify a shared decision or next step. However, they do not guarantee genuine agreement. The evaluator must report unresolved disagreements honestly rather than inventing consensus.
 
 ## 8. Running the Tests
 
-With the virtual environment activated, run the dialogue and agreement evaluator tests:
+Activate the virtual environment and run the complete test suite:
 
 ```bash
-python -m unittest -v test_dialogue test_agreement_evaluator
+python -m pytest -v
 ```
 
-Alternatively, discover and run the complete test suite:
+The tests cover:
 
-```bash
-python -m unittest discover -v
-```
+- Agreement evaluation and invalid evaluation results.
+- Custom stakeholder names and dialogue orchestration.
+- Closing statements, speaker order, and turn numbering.
+- Invalid dialogue inputs and API failure handling.
+- Streamlit frontend behavior.
+- Cybersecurity Q&A API validation.
+- Q&A service response validation and relevance checks.
 
-The tests cover dialogue orchestration, custom stakeholder names, turn numbering, closing statements, input validation, and agreement evaluation.
+Most tests use mocked AI responses, allowing them to run without generating every response through a live Ollama model.
 
-Most of these tests use mocked model responses, so they do not require live AI generation for every test.
+A passing test suite verifies the covered behavior but does not replace manual testing with the actual Ollama model.
 
 ## 9. Project Structure
 
 ```text
 CyberTalk/
 ├── main.py
+├── personas.py
 ├── agreement.py
 ├── agreement_evaluator.py
+├── qa_service.py
+├── frontend.py
 ├── test_dialogue.py
 ├── test_agreement_evaluator.py
+├── test_frontend.py
+├── test_qa_api.py
+├── test_qa_service.py
 ├── requirements.txt
 ├── README.md
-├── .gitignore
-└── .venv/
+└── .gitignore
 ```
 
-- `main.py`: FastAPI application, request validation, Ollama calls, and dialogue orchestration.
-- `agreement.py`: Structured agreement result model and status validation.
+- `main.py`: FastAPI application, request validation, API endpoints, dialogue orchestration, and Ollama integration.
+- `personas.py`: Persona-related definitions retained by the project.
+- `agreement.py`: Structured agreement result model.
 - `agreement_evaluator.py`: Agreement evaluation logic.
-- `test_dialogue.py`: Automated tests for dialogue requests and orchestration.
-- `test_agreement_evaluator.py`: Automated tests for agreement evaluation.
+- `qa_service.py`: Cybersecurity question validation, relevance checks, and answer generation.
+- `frontend.py`: Streamlit user interface.
+- `test_dialogue.py`: Dialogue API and orchestration tests.
+- `test_agreement_evaluator.py`: Agreement evaluation tests.
+- `test_frontend.py`: Frontend behavior tests.
+- `test_qa_api.py`: Cybersecurity Q&A API tests.
+- `test_qa_service.py`: Q&A service tests.
 - `requirements.txt`: Python dependencies.
 - `.gitignore`: Files and directories excluded from version control.
 
-The virtual environment should remain local and must not be committed to Git.
+The `.venv` directory is local and should not be committed to Git.
 
 ## 10. Current Project Status
 
-Implemented:
+### Implemented
 
 - FastAPI backend and health endpoint.
 - Ollama-powered text generation.
 - User-defined stakeholder personas.
-- Configurable multi-round stakeholder dialogue.
+- Configurable multi-round dialogue.
 - Closing statements for both stakeholders.
 - Structured agreement evaluation.
-- Input validation and automated tests.
+- Cybersecurity question-and-answer service.
+- Streamlit frontend.
+- Input validation and API error handling.
+- Automated tests for the implemented components.
 
-Planned enhancements:
+### Possible future improvements
 
-- Build a user-friendly Streamlit frontend.
-- Improve handling of Ollama service failures and model timeouts.
-- Add further integration and end-to-end tests.
-- Improve the reliability of shared-decision generation and agreement evaluation.
+- Add broader end-to-end tests using a live Ollama model.
+- Improve reliability of agreement evaluation and shared-decision generation.
+- Improve user-facing diagnostics for model timeouts and service availability.
+- Expand frontend usability and accessibility.
 
 ## 11. Project Goal
 
-CyberTalk aims to demonstrate how Generative AI can facilitate structured cybersecurity discussions between stakeholders with different responsibilities, evaluate areas of agreement and disagreement, and identify actionable next steps.
+CyberTalk demonstrates how Generative AI can support structured cybersecurity discussions between stakeholders with different responsibilities, evaluate areas of agreement and disagreement, and identify practical next steps.
 
-The project is being developed incrementally, with Git commits used to track implementation and testing progress.
+The project is developed incrementally, with Git commits tracking implementation, testing, and documentation changes.
