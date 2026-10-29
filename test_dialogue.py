@@ -7,6 +7,9 @@ from fastapi.testclient import TestClient
 from agreement import AgreementResult
 from main import app
 
+import httpx
+
+from agreement_evaluator import AgreementEvaluationError
 
 client = TestClient(app)
 
@@ -221,6 +224,80 @@ class DialogueRequestTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
 
+    @patch("main.evaluate_agreement", new_callable=AsyncMock)
+    @patch("main.generate_persona_response", new_callable=AsyncMock)
+    def test_agreement_evaluation_failure_returns_502(
+        self,
+        mock_generate,
+        mock_evaluate,
+    ):
+        mock_generate.return_value = "We should improve security."
+        mock_evaluate.side_effect = AgreementEvaluationError(
+            "Simulated evaluation failure."
+        )
+
+        response = client.post(
+            "/dialogue",
+            json={
+                "topic": "How should we improve cloud security?",
+                "stakeholder_1": "Security Architect",
+                "stakeholder_2": "Cloud Engineer",
+                "rounds": 1,
+            },
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn(
+            "Agreement evaluation failed:",
+            response.json()["detail"],
+        )
+        mock_evaluate.assert_awaited_once()
+
+    @patch("main.generate_persona_response", new_callable=AsyncMock)
+    def test_ollama_failure_returns_502(self, mock_generate):
+        mock_generate.side_effect = httpx.ConnectError(
+            "Simulated Ollama connection failure."
+        )
+
+        response = client.post(
+            "/dialogue",
+            json={
+                "topic": "How should we improve cloud security?",
+                "stakeholder_1": "Security Architect",
+                "stakeholder_2": "Cloud Engineer",
+                "rounds": 1,
+            },
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn(
+            "Ollama dialogue request failed",
+            response.json()["detail"],
+        )
+
+    def test_missing_dialogue_fields_are_rejected(self):
+        response = client.post(
+            "/dialogue",
+            json={
+                "topic": "How should we improve cloud security?",
+                "stakeholder_1": "Security Architect",
+            },
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_invalid_round_count_is_rejected(self):
+        response = client.post(
+            "/dialogue",
+            json={
+                "topic": "How should we improve cloud security?",
+                "stakeholder_1": "Security Architect",
+                "stakeholder_2": "Cloud Engineer",
+                "rounds": 0,
+            },
+        )
+
+        self.assertEqual(response.status_code, 422)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
