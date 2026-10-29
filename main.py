@@ -2,13 +2,13 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, field_validator
 import httpx
-
+import time
 from agreement import AgreementResult
 from agreement_evaluator import (
     AgreementEvaluationError,
     evaluate_agreement,
 )
-
+from qa_service import answer_cybersecurity_question
 app = FastAPI(title="CyberTalk API")
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
@@ -18,7 +18,18 @@ MODEL_NAME = "llama3.2:3b"
 class ChatRequest(BaseModel):
     message: str
 
+class QARequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
 
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Please enter a question.")
+
+        return value
 class DialogueRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=500)
     stakeholder_1: str = Field(min_length=2, max_length=100)
@@ -47,7 +58,33 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
+@app.post("/ask")
+async def ask_question(request: QARequest):
+    try:
+        answer = await answer_cybersecurity_question(
+            request.question
+        )
 
+        return {
+            "question": request.question,
+            "answer": answer,
+            "model": MODEL_NAME,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Ollama Q&A request failed "
+                f"({type(exc).__name__}): {repr(exc)}"
+            ),
+        ) from exc
 async def generate_persona_response(
     stakeholder_name: str,
     topic: str,
@@ -64,32 +101,22 @@ async def generate_persona_response(
         history = "No previous discussion."
 
     system_prompt = (
-        f"You are {stakeholder_name}, participating in a professional "
-        "cybersecurity stakeholder discussion. "
-        f"Represent the perspective of {stakeholder_name} based on "
-        "the role or responsibilities implied by that title. "
-        "Explain your reasoning clearly, consider the other "
-        "stakeholder's concerns, and seek a practical, safe, "
-        "and implementable agreement. "
-        "Do not impersonate the other stakeholder. "
-        "Do not claim that agreement exists unless the discussion "
-        "supports it."
-    )
+    f"You are {stakeholder_name}, participating in a cybersecurity "
+    "discussion. Represent your stakeholder role accurately. "
+    "Be concise, practical, and respectful. Respond directly to "
+    "the other stakeholder's points and work toward a realistic "
+    "shared action plan. Use 2-3 complete sentences. "
+    "Finish your sentences and do not end mid-thought. "
+    "Never claim agreement without evidence."
+)
 
     closing_instruction = ""
     if closing:
         closing_instruction = (
-            "\nThis is your final closing statement in the discussion. "
-            "Summarize the shared decision or action plan that both "
-            "stakeholders can support. Explicitly state what you and "
-            "the other stakeholder agree to do next. "
-            "If you disagree on the original proposal, identify a "
-            "practical next step that both stakeholders can accept, "
-            "such as a pilot, further assessment, or a follow-up review. "
-            "Clearly distinguish an agreed action from an unresolved "
-            "disagreement. Never falsely claim that the other "
-            "stakeholder has accepted a proposal they have rejected. "
-            "End with a clear, concise statement of the shared next step."
+            "\nThis is your final closing statement. Use 2-3 sentences "
+            "to state the action both stakeholders can support. "
+            "Mention any important unresolved disagreement briefly. "
+            "Do not falsely claim the other stakeholder agreed."
         )
 
     messages = [
@@ -117,7 +144,11 @@ async def generate_persona_response(
         "messages": messages,
         "stream": False,
         "keep_alive": "10m",
+        "options": {
+            "num_predict": 160,
+        },
     }
+
 
     async with httpx.AsyncClient(timeout=300.0) as client:
         response = await client.post(OLLAMA_URL, json=payload)
@@ -151,8 +182,11 @@ async def chat(request: ChatRequest):
         ) from exc
 
 
+
 @app.post("/dialogue")
 async def dialogue(request: DialogueRequest):
+    dialogue_start = time.perf_counter()
+
     stakeholder_1 = request.stakeholder_1.strip()
     stakeholder_2 = request.stakeholder_2.strip()
 
@@ -169,10 +203,18 @@ async def dialogue(request: DialogueRequest):
         # Generate the regular discussion rounds.
         for turn in range(1, request.rounds + 1):
             for stakeholder_name in stakeholder_order:
+                call_start = time.perf_counter()
+
                 reply = await generate_persona_response(
                     stakeholder_name=stakeholder_name,
                     topic=request.topic,
                     transcript=transcript,
+                )
+
+                print(
+                    f"[Timing] Discussion turn {turn} - "
+                    f"{stakeholder_name}: "
+                    f"{time.perf_counter() - call_start:.2f} seconds"
                 )
 
                 transcript.append({
@@ -181,15 +223,23 @@ async def dialogue(request: DialogueRequest):
                     "message": reply,
                 })
 
-        # Give both stakeholders an explicit closing statement.
+        # Generate explicit closing statements.
         closing_turn = request.rounds + 1
 
         for stakeholder_name in stakeholder_order:
+            call_start = time.perf_counter()
+
             reply = await generate_persona_response(
                 stakeholder_name=stakeholder_name,
                 topic=request.topic,
                 transcript=transcript,
                 closing=True,
+            )
+
+            print(
+                f"[Timing] Closing statement - "
+                f"{stakeholder_name}: "
+                f"{time.perf_counter() - call_start:.2f} seconds"
             )
 
             transcript.append({
@@ -199,9 +249,21 @@ async def dialogue(request: DialogueRequest):
             })
 
         # Evaluate the completed dialogue.
+        evaluation_start = time.perf_counter()
+
         agreement: AgreementResult = await evaluate_agreement(
             topic=request.topic,
             transcript=transcript,
+        )
+
+        print(
+            f"[Timing] Agreement evaluation: "
+            f"{time.perf_counter() - evaluation_start:.2f} seconds"
+        )
+
+        print(
+            f"[Timing] Total dialogue request: "
+            f"{time.perf_counter() - dialogue_start:.2f} seconds"
         )
 
         return {
@@ -209,9 +271,7 @@ async def dialogue(request: DialogueRequest):
             "rounds": request.rounds,
             "model": MODEL_NAME,
             "stakeholders": [
-                {
-                    "name": stakeholder_name,
-                }
+                {"name": stakeholder_name}
                 for stakeholder_name in stakeholder_order
             ],
             "dialogue": transcript,

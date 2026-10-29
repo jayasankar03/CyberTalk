@@ -32,54 +32,39 @@ async def evaluate_agreement(
     )
 
     prompt = f"""
-Evaluate the following cybersecurity discussion impartially.
+Evaluate this cybersecurity discussion using only the evidence provided.
 
-Topic:
-{topic}
+Topic: {topic}
 
 Complete dialogue:
 {dialogue}
 
-Determine whether the stakeholders reached a meaningful agreement.
-
-Use these status definitions:
-
-1. agreement_reached:
-   Both stakeholders explicitly support a compatible, sufficiently clear
-   shared decision. No material disagreement remains.
-
-2. partial_agreement:
-   They share some goals or decisions, but an important disagreement,
-   unconfirmed proposal, or unresolved condition remains.
-
-3. no_agreement:
-   They have not accepted a meaningful shared decision.
+Select exactly one status:
+- agreement_reached: Both stakeholders explicitly support the same
+  clear decision, with no material unresolved disagreement.
+- partial_agreement: Common ground exists, but a material issue,
+  disagreement, or condition remains unresolved.
+- no_agreement: No meaningful mutually accepted decision exists.
 
 Rules:
-- Evaluate the complete dialogue, including both closing statements.
-- A proposal by one stakeholder is not mutual agreement by itself.
-- Do not assume agreement because the conversation ended.
-- Check whether both stakeholders explicitly support the same decision.
-- If one stakeholder asks for more information or has not accepted a
-  proposal, do not claim full agreement on that proposal.
-- Identify contradictions in the dialogue, including inconsistent
-  budget totals or allocations that exceed the stated budget.
-- Do not present a disputed figure or proposal as an approved action.
-- Distinguish agreed decisions from proposed next steps.
-- If important issues remain unresolved, list them and recommend actions.
-- Use only evidence supported by the supplied dialogue.
-- Return only a valid JSON object matching this structure:
+- Include both closing statements in the evaluation.
+- A proposal is not an agreement unless both stakeholders support it.
+- Check contradictions, including conflicting budget figures.
+- Separate agreed decisions from proposed actions.
+- Do not invent facts or infer consent.
+- If evidence is insufficient, do not claim full agreement.
+- Keep explanations concise and lists focused.
 
+Return only valid JSON with exactly these fields:
 {{
   "status": "agreement_reached",
-  "explanation": "Explain the evidence supporting the assessment.",
-  "shared_decision": "The mutually supported decision, or null.",
+  "explanation": "Brief evidence-based explanation.",
+  "shared_decision": "Mutually accepted decision, or null.",
   "unresolved_disagreements": [],
   "next_actions": []
 }}
 
-The status must be exactly one of:
-agreement_reached, partial_agreement, no_agreement.
+Allowed statuses: agreement_reached, partial_agreement, no_agreement.
 """
 
     payload = {
@@ -102,6 +87,9 @@ agreement_reached, partial_agreement, no_agreement.
         "format": "json",
         "stream": False,
         "keep_alive": "10m",
+        "options": {
+            "num_predict": 180,
+        },
     }
 
     try:

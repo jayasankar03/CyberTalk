@@ -40,6 +40,85 @@ st.info(
 
 
 # -----------------------------
+# Cybersecurity Q&A
+# -----------------------------
+
+st.divider()
+st.header("💬 Ask a Cybersecurity Question")
+
+st.write(
+    "Ask a cybersecurity-related question and get a direct answer "
+    "from the AI assistant. This mode does not generate a stakeholder "
+    "dialogue."
+)
+
+with st.form("qa_form"):
+    question = st.text_input(
+        "Your question",
+        placeholder=(
+            "Example: How can I protect my organization from phishing?"
+        ),
+        max_chars=2000,
+    )
+
+    qa_submitted = st.form_submit_button(
+        "Ask CyberTalk",
+        use_container_width=True,
+    )
+
+if qa_submitted:
+    if not question.strip():
+        st.error("Please enter a question.")
+    else:
+        try:
+            with st.spinner("Checking your question and generating an answer..."):
+                qa_response = requests.post(
+                    f"{API_URL}/ask",
+                    json={"question": question.strip()},
+                    timeout=360,
+                )
+
+                if not qa_response.ok:
+                    try:
+                        detail = qa_response.json().get(
+                            "detail",
+                            qa_response.text,
+                        )
+                    except ValueError:
+                        detail = qa_response.text
+
+                    st.error(
+                        f"The CyberTalk API returned "
+                        f"HTTP {qa_response.status_code}: {detail}"
+                    )
+                else:
+                    qa_result = qa_response.json()
+                    st.session_state["qa_result"] = qa_result
+
+        except requests.exceptions.Timeout:
+            st.error(
+                "The request timed out. Please try again."
+            )
+
+        except requests.exceptions.ConnectionError:
+            st.error(
+                "Could not connect to the CyberTalk API. "
+                f"Make sure FastAPI is running at {API_URL}."
+            )
+
+        except requests.exceptions.RequestException as exc:
+            st.error(f"Request failed: {exc}")
+
+        except ValueError:
+            st.error("The API returned an invalid JSON response.")
+
+qa_result = st.session_state.get("qa_result")
+
+if qa_result:
+    st.subheader("Answer")
+    st.write(qa_result.get("answer", "No answer was returned."))
+
+# -----------------------------
 # User input
 # -----------------------------
 
