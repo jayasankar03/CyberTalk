@@ -8,7 +8,10 @@ from agreement_evaluator import (
     AgreementEvaluationError,
     evaluate_agreement,
 )
-from qa_service import answer_cybersecurity_question
+from qa_service import (
+    OllamaResponseError,
+    answer_cybersecurity_question,
+)
 app = FastAPI(title="CyberTalk API")
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
@@ -76,7 +79,11 @@ async def ask_question(request: QARequest):
             status_code=400,
             detail=str(exc),
         ) from exc
-
+    except OllamaResponseError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The AI service returned an invalid response. Please try again.",
+        ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=502,

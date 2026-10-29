@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from main import app
 
-
+from qa_service import OllamaResponseError
 client = TestClient(app)
 
 
@@ -52,7 +52,22 @@ class CybersecurityQAAPITests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("cybersecurity", response.json()["answer"].lower())
+    @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
+    def test_malformed_ollama_response_returns_502(self, mock_answer):
+        mock_answer.side_effect = OllamaResponseError(
+            "Ollama returned an invalid response."
+        )
 
+        response = client.post(
+            "/ask",
+            json={"question": "How can I prevent phishing attacks?"},
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()["detail"],
+            "The AI service returned an invalid response. Please try again.",
+        )
     def test_empty_question_is_rejected(self):
         response = client.post(
             "/ask",
