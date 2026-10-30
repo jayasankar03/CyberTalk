@@ -48,4 +48,7 @@ def get_db():
 
 # Create all registered database tables
 def create_db_tables():
+    # Import models so SQLAlchemy registers them with Base.metadata
+    import user_model
+
     Base.metadata.create_all(bind=engine)
