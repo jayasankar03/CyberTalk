@@ -1,11 +1,15 @@
 
 import logging
 import time
-from urllib import response
+from fastapi import FastAPI, HTTPException, Depends, status
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
+from database import get_db, create_db_tables
+from user_model import User
+from security import hash_password
 import httpx
-from fastapi import FastAPI, HTTPException
-from itsdangerous import exc
+from fastapi import FastAPI, HTTPException, Depends, status
 from pydantic import BaseModel, Field, field_validator
 from agreement import AgreementResult
 from agreement_evaluator import (
@@ -55,7 +59,32 @@ def extract_dialogue_content(result: object) -> str:
         )
 
     return content.strip()
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=50)
+    email: str = Field(min_length=5, max_length=255)
+    password: str = Field(min_length=8, max_length=128)
 
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        value = value.strip()
+
+        if len(value) < 3:
+            raise ValueError(
+                "Username must contain at least 3 characters."
+            )
+
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        value = value.strip().lower()
+
+        if "@" not in value or "." not in value.split("@")[-1]:
+            raise ValueError("Please provide a valid email address.")
+
+        return value
 class ChatRequest(BaseModel):
     message: str
 
@@ -89,6 +118,72 @@ class DialogueRequest(BaseModel):
 
         return value
 
+# Create database tables when the application starts.
+@app.on_event("startup")
+def startup_event():
+    create_db_tables()
+
+
+@app.post("/register", status_code=status.HTTP_201_CREATED)
+def register_user(
+    request: RegisterRequest,
+    db: Session = Depends(get_db),
+):
+    # Check whether the username already exists.
+    existing_username = db.query(User).filter(
+        User.username == request.username
+    ).first()
+
+    if existing_username:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username is already registered.",
+        )
+
+    # Check whether the email already exists.
+    existing_email = db.query(User).filter(
+        User.email == request.email
+    ).first()
+
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already registered.",
+        )
+
+    # Hash the password before storing it.
+    hashed_password = hash_password(request.password)
+
+    # Create the new user.
+    new_user = User(
+        username=request.username,
+        email=request.email,
+        hashed_password=hashed_password,
+        role="user",
+    )
+
+    try:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username or email is already registered.",
+        )
+
+    return {
+        "message": "User registered successfully.",
+        "user": {
+            "id": new_user.id,
+            "username": new_user.username,
+            "email": new_user.email,
+            "role": new_user.role,
+            "created_at": new_user.created_at,
+        },
+    }
 
 @app.get("/")
 async def root():
