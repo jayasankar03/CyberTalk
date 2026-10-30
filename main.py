@@ -1,8 +1,10 @@
 
+import logging
+import time
+
+import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, field_validator
-import httpx
-import time
 from agreement import AgreementResult
 from agreement_evaluator import (
     AgreementEvaluationError,
@@ -13,6 +15,13 @@ from qa_service import (
     answer_cybersecurity_question,
 )
 app = FastAPI(title="CyberTalk API")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
+logger = logging.getLogger("cybertalk")
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 MODEL_NAME = "llama3.2:3b"
@@ -61,6 +70,7 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
+
 @app.post("/ask")
 async def ask_question(request: QARequest):
     try:
@@ -80,34 +90,45 @@ async def ask_question(request: QARequest):
         }
 
     except ValueError as exc:
+        logger.warning(
+            "Invalid QA request: %s",
+            str(exc),
+        )
         raise HTTPException(
             status_code=400,
             detail=str(exc),
         ) from exc
 
-    except OllamaResponseError as exc:
+    except OllamaResponseError:
+        logger.exception(
+            "Ollama returned an invalid response during QA."
+        )
         raise HTTPException(
             status_code=502,
             detail=(
                 "The AI service returned an invalid response. "
                 "Please try again."
             ),
-        ) from exc
+        )
 
-    except httpx.HTTPError as exc:
+    except httpx.HTTPError:
+        logger.exception(
+            "Ollama communication failed during QA."
+        )
         raise HTTPException(
             status_code=502,
-            detail=(
-                f"Ollama Q&A request failed "
-                f"({type(exc).__name__}): {repr(exc)}"
-            ),
-        ) from exc
+            detail="The AI service is temporarily unavailable. Please try again.",
+        )
 
-    except Exception as exc:
+    except Exception:
+        logger.exception(
+            "Unexpected error occurred in the QA endpoint."
+        )
         raise HTTPException(
             status_code=500,
             detail="An unexpected error occurred in the QA service.",
-        ) from exc
+        )
+
 async def generate_persona_response(
     stakeholder_name: str,
     topic: str,
@@ -205,7 +226,6 @@ async def chat(request: ChatRequest):
         ) from exc
 
 
-
 @app.post("/dialogue")
 async def dialogue(request: DialogueRequest):
     dialogue_start = time.perf_counter()
@@ -234,10 +254,11 @@ async def dialogue(request: DialogueRequest):
                     transcript=transcript,
                 )
 
-                print(
-                    f"[Timing] Discussion turn {turn} - "
-                    f"{stakeholder_name}: "
-                    f"{time.perf_counter() - call_start:.2f} seconds"
+                logger.info(
+                    "Discussion turn %s - %s completed in %.2f seconds",
+                    turn,
+                    stakeholder_name,
+                    time.perf_counter() - call_start,
                 )
 
                 transcript.append({
@@ -259,10 +280,10 @@ async def dialogue(request: DialogueRequest):
                 closing=True,
             )
 
-            print(
-                f"[Timing] Closing statement - "
-                f"{stakeholder_name}: "
-                f"{time.perf_counter() - call_start:.2f} seconds"
+            logger.info(
+                "Closing statement - %s completed in %.2f seconds",
+                stakeholder_name,
+                time.perf_counter() - call_start,
             )
 
             transcript.append({
@@ -279,14 +300,14 @@ async def dialogue(request: DialogueRequest):
             transcript=transcript,
         )
 
-        print(
-            f"[Timing] Agreement evaluation: "
-            f"{time.perf_counter() - evaluation_start:.2f} seconds"
+        logger.info(
+            "Agreement evaluation completed in %.2f seconds",
+            time.perf_counter() - evaluation_start,
         )
 
-        print(
-            f"[Timing] Total dialogue request: "
-            f"{time.perf_counter() - dialogue_start:.2f} seconds"
+        logger.info(
+            "Total dialogue request completed in %.2f seconds",
+            time.perf_counter() - dialogue_start,
         )
 
         return {
@@ -301,17 +322,21 @@ async def dialogue(request: DialogueRequest):
             "agreement": agreement.model_dump(),
         }
 
-    except AgreementEvaluationError as exc:
+    except AgreementEvaluationError:
+        logger.exception(
+            "Agreement evaluation failed for topic: %s",
+            request.topic,
+        )
         raise HTTPException(
             status_code=502,
-            detail=f"Agreement evaluation failed: {str(exc)}",
-        ) from exc
+            detail="The agreement evaluation service failed. Please try again.",
+        )
 
-    except httpx.HTTPError as exc:
+    except httpx.HTTPError:
+        logger.exception(
+            "Ollama communication failed during dialogue generation."
+        )
         raise HTTPException(
             status_code=502,
-            detail=(
-                f"Ollama dialogue request failed "
-                f"({type(exc).__name__}): {repr(exc)}"
-            ),
-        ) from exc
+            detail="The AI service is temporarily unavailable. Please try again.",
+        )

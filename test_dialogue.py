@@ -1,6 +1,7 @@
 
 import unittest
 from unittest.mock import AsyncMock, patch
+from urllib import response
 
 from fastapi.testclient import TestClient
 
@@ -247,8 +248,12 @@ class DialogueRequestTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 502)
-        self.assertIn(
-            "Agreement evaluation failed:",
+        self.assertEqual(
+            response.json()["detail"],
+            "The agreement evaluation service failed. Please try again.",
+        )
+        self.assertNotIn(
+            "Simulated evaluation failure",
             response.json()["detail"],
         )
         mock_evaluate.assert_awaited_once()
@@ -270,8 +275,12 @@ class DialogueRequestTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 502)
-        self.assertIn(
-            "Ollama dialogue request failed",
+        self.assertEqual(
+            response.json()["detail"],
+            "The AI service is temporarily unavailable. Please try again.",
+        )
+        self.assertNotIn(
+            "ConnectError",
             response.json()["detail"],
         )
 

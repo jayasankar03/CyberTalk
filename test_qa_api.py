@@ -1,6 +1,7 @@
 
 import unittest
 from unittest.mock import AsyncMock, patch
+from urllib import response
 
 import httpx
 
@@ -95,7 +96,15 @@ class CybersecurityQAAPITests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 502)
-        self.assertIn("ConnectError", response.json()["detail"])
+        self.assertEqual(
+            response.json()["detail"],
+            "The AI service is temporarily unavailable. Please try again.",
+        )
+        self.assertNotIn(
+            "ConnectError",
+            response.json()["detail"],
+        )
+
     @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
     def test_ollama_timeout_returns_502(self, mock_answer):
         mock_answer.side_effect = httpx.ReadTimeout(
@@ -108,7 +117,15 @@ class CybersecurityQAAPITests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 502)
-        self.assertIn("ReadTimeout", response.json()["detail"])
+        self.assertEqual(
+            response.json()["detail"],
+            "The AI service is temporarily unavailable. Please try again.",
+        )
+        self.assertNotIn(
+            "ReadTimeout",
+            response.json()["detail"],
+        )
+
     @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
     def test_unexpected_service_error_returns_500(self, mock_answer):
         mock_answer.side_effect = RuntimeError(
