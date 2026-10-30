@@ -6,7 +6,7 @@ from urllib import response
 from fastapi.testclient import TestClient
 
 from agreement import AgreementResult
-from main import app
+from main import app, DialogueGenerationError
 
 import httpx
 
@@ -264,6 +264,12 @@ class DialogueRequestTests(unittest.TestCase):
             "Simulated Ollama connection failure."
         )
 
+    @patch("main.generate_persona_response", new_callable=AsyncMock)
+    def test_invalid_ollama_response_returns_502(self, mock_generate):
+        mock_generate.side_effect = DialogueGenerationError(
+            "Ollama returned empty dialogue content."
+        )
+
         response = client.post(
             "/dialogue",
             json={
@@ -277,7 +283,27 @@ class DialogueRequestTests(unittest.TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(
             response.json()["detail"],
-            "The AI service is temporarily unavailable. Please try again.",
+            "The AI service returned an invalid response. Please try again.",
+        )
+        self.assertNotIn(
+            "Ollama returned empty dialogue content",
+            response.json()["detail"],
+        )
+
+        response = client.post(
+            "/dialogue",
+            json={
+                "topic": "How should we improve cloud security?",
+                "stakeholder_1": "Security Architect",
+                "stakeholder_2": "Cloud Engineer",
+                "rounds": 1,
+            },
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()["detail"],
+            "The AI service returned an invalid response. Please try again.",
         )
         self.assertNotIn(
             "ConnectError",

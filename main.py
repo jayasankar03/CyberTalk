@@ -1,9 +1,11 @@
 
 import logging
 import time
+from urllib import response
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from itsdangerous import exc
 from pydantic import BaseModel, Field, field_validator
 from agreement import AgreementResult
 from agreement_evaluator import (
@@ -26,6 +28,33 @@ logger = logging.getLogger("cybertalk")
 OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 MODEL_NAME = "llama3.2:3b"
 
+class DialogueGenerationError(Exception):
+    """Raised when dialogue generation returns an invalid response."""
+
+
+def extract_dialogue_content(result: object) -> str:
+    """Validate an Ollama dialogue response and extract its content."""
+
+    if not isinstance(result, dict):
+        raise DialogueGenerationError(
+            "Ollama returned an invalid dialogue response."
+        )
+
+    message = result.get("message")
+
+    if not isinstance(message, dict):
+        raise DialogueGenerationError(
+            "Ollama response is missing a valid message."
+        )
+
+    content = message.get("content")
+
+    if not isinstance(content, str) or not content.strip():
+        raise DialogueGenerationError(
+            "Ollama returned empty or invalid dialogue content."
+        )
+
+    return content.strip()
 
 class ChatRequest(BaseModel):
     message: str
@@ -197,9 +226,14 @@ async def generate_persona_response(
     async with httpx.AsyncClient(timeout=300.0) as client:
         response = await client.post(OLLAMA_URL, json=payload)
         response.raise_for_status()
+    try:
         result = response.json()
+    except ValueError as exc:
+        raise DialogueGenerationError(
+            "Ollama returned an invalid JSON response."
+        ) from exc
 
-    return result["message"]["content"].strip()
+    return extract_dialogue_content(result)
 
 
 @app.post("/chat")
@@ -216,15 +250,19 @@ async def chat(request: ChatRequest):
             "model": MODEL_NAME,
         }
 
-    except httpx.HTTPError as exc:
+    except DialogueGenerationError:
+        logger.exception("Invalid response during chat generation.")
         raise HTTPException(
             status_code=502,
-            detail=(
-                f"Ollama request failed "
-                f"({type(exc).__name__}): {repr(exc)}"
-            ),
-        ) from exc
+            detail="The AI service returned an invalid response. Please try again.",
+        )
 
+    except httpx.HTTPError:
+        logger.exception("Ollama request failed during chat generation.")
+        raise HTTPException(
+            status_code=502,
+            detail="The AI service is temporarily unavailable. Please try again.",
+        )
 
 @app.post("/dialogue")
 async def dialogue(request: DialogueRequest):
@@ -331,7 +369,14 @@ async def dialogue(request: DialogueRequest):
             status_code=502,
             detail="The agreement evaluation service failed. Please try again.",
         )
-
+    except DialogueGenerationError:
+        logger.exception(
+        "Invalid Ollama response during dialogue generation."
+        )
+        raise HTTPException(
+        status_code=502,
+        detail="The AI service returned an invalid response. Please try again.",
+        )
     except httpx.HTTPError:
         logger.exception(
             "Ollama communication failed during dialogue generation."
