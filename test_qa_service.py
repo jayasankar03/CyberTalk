@@ -109,5 +109,82 @@ class CybersecurityQAServiceTests(unittest.IsolatedAsyncioTestCase):
                     "How can I prevent phishing attacks?"
                 )
 
+    async def test_non_dictionary_ollama_response_is_rejected(self):
+        from qa_service import OllamaResponseError
+
+        with patch("qa_service.httpx.AsyncClient") as client_class:
+            client = client_class.return_value.__aenter__.return_value
+            client.post = AsyncMock()
+
+            mock_response = MagicMock()
+            mock_response.json.return_value = ["invalid response"]
+            mock_response.raise_for_status.return_value = None
+            client.post.return_value = mock_response
+
+            with self.assertRaises(OllamaResponseError):
+                await check_cybersecurity_relevance(
+                    "How can I prevent phishing attacks?"
+                )
+
+    async def test_non_string_ollama_content_is_rejected(self):
+        from qa_service import OllamaResponseError
+
+        mock_response = self.mock_ollama_response(None)
+
+        with patch("qa_service.httpx.AsyncClient") as client_class:
+            client = client_class.return_value.__aenter__.return_value
+            client.post = AsyncMock(return_value=mock_response)
+
+            with self.assertRaises(OllamaResponseError):
+                await check_cybersecurity_relevance(
+                    "How can I prevent phishing attacks?"
+                )
+
+    async def test_ollama_content_is_stripped(self):
+        from qa_service import extract_ollama_content
+
+        result = extract_ollama_content({
+            "message": {"content": "  YES  "}
+        })
+
+        self.assertEqual(result, "YES")
+
+    async def test_unclear_classification_is_treated_as_unrelated(self):
+        mock_response = self.mock_ollama_response(
+            "YES, this is probably related."
+        )
+
+        with patch("qa_service.httpx.AsyncClient") as client_class:
+            client = client_class.return_value.__aenter__.return_value
+            client.post = AsyncMock(return_value=mock_response)
+
+            result = await check_cybersecurity_relevance(
+                "How can I protect my account?"
+            )
+
+        self.assertFalse(result)
+
+    async def test_valid_cybersecurity_answer_is_returned(self):
+        mock_response = self.mock_ollama_response(
+            "Use MFA and a strong password to protect your account."
+        )
+
+        with patch(
+            "qa_service.check_cybersecurity_relevance",
+            new=AsyncMock(return_value=True),
+        ), patch("qa_service.httpx.AsyncClient") as client_class:
+
+            client = client_class.return_value.__aenter__.return_value
+            client.post = AsyncMock(return_value=mock_response)
+
+            result = await answer_cybersecurity_question(
+                "How can I protect my account?"
+            )
+
+        self.assertEqual(
+            result,
+            "Use MFA and a strong password to protect your account."
+        )
+
 if __name__ == "__main__":
     unittest.main()
