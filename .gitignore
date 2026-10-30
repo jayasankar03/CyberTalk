@@ -5,3 +5,7 @@ __pycache__/
 .env
 .pytest_cache/
 .vscode/
+# SQLite database files
+*.db
+*.sqlite
+*.sqlite3
