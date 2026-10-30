@@ -2,6 +2,8 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import httpx
+
 from fastapi.testclient import TestClient
 
 from main import app
@@ -81,6 +83,62 @@ class CybersecurityQAAPITests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
 
+    @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
+    def test_ollama_connection_error_returns_502(self, mock_answer):
+        mock_answer.side_effect = httpx.ConnectError(
+            "Unable to connect to Ollama."
+        )
+
+        response = client.post(
+            "/ask",
+            json={"question": "How can I prevent phishing attacks?"},
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("ConnectError", response.json()["detail"])
+    @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
+    def test_ollama_timeout_returns_502(self, mock_answer):
+        mock_answer.side_effect = httpx.ReadTimeout(
+            "Ollama request timed out."
+        )
+
+        response = client.post(
+            "/ask",
+            json={"question": "How can I protect my network?"},
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("ReadTimeout", response.json()["detail"])
+    @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
+    def test_unexpected_service_error_returns_500(self, mock_answer):
+        mock_answer.side_effect = RuntimeError(
+            "Unexpected internal error."
+        )
+
+        response = client.post(
+            "/ask",
+            json={"question": "How can I improve password security?"},
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.json()["detail"],
+            "An unexpected error occurred in the QA service.",
+        )
+    @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
+    def test_empty_answer_returns_502(self, mock_answer):
+        mock_answer.return_value = "   "
+
+        response = client.post(
+            "/ask",
+            json={"question": "How can I prevent malware?"},
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(
+            response.json()["detail"],
+            "The AI service returned an invalid response. Please try again.",
+        )
 
 if __name__ == "__main__":
     unittest.main()

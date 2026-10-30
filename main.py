@@ -68,9 +68,14 @@ async def ask_question(request: QARequest):
             request.question
         )
 
+        if not isinstance(answer, str) or not answer.strip():
+            raise OllamaResponseError(
+                "The QA service returned an empty answer."
+            )
+
         return {
             "question": request.question,
-            "answer": answer,
+            "answer": answer.strip(),
             "model": MODEL_NAME,
         }
 
@@ -79,11 +84,16 @@ async def ask_question(request: QARequest):
             status_code=400,
             detail=str(exc),
         ) from exc
+
     except OllamaResponseError as exc:
         raise HTTPException(
             status_code=502,
-            detail="The AI service returned an invalid response. Please try again.",
+            detail=(
+                "The AI service returned an invalid response. "
+                "Please try again."
+            ),
         ) from exc
+
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=502,
@@ -91,6 +101,12 @@ async def ask_question(request: QARequest):
                 f"Ollama Q&A request failed "
                 f"({type(exc).__name__}): {repr(exc)}"
             ),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred in the QA service.",
         ) from exc
 async def generate_persona_response(
     stakeholder_name: str,
