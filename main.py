@@ -7,7 +7,8 @@ from sqlalchemy.exc import IntegrityError
 
 from database import get_db, create_db_tables
 from user_model import User
-from security import hash_password
+from security import hash_password, verify_password
+from auth import create_access_token
 import httpx
 from fastapi import FastAPI, HTTPException, Depends, status
 from pydantic import BaseModel, Field, field_validator
@@ -83,6 +84,19 @@ class RegisterRequest(BaseModel):
 
         if "@" not in value or "." not in value.split("@")[-1]:
             raise ValueError("Please provide a valid email address.")
+
+        return value
+class LoginRequest(BaseModel):
+    identifier: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("identifier")
+    @classmethod
+    def validate_identifier(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Username or email is required.")
 
         return value
 class ChatRequest(BaseModel):
@@ -183,6 +197,44 @@ def register_user(
             "role": new_user.role,
             "created_at": new_user.created_at,
         },
+    }
+
+@app.post("/login")
+def login_user(
+    request: LoginRequest,
+    db: Session = Depends(get_db),
+):
+    # Find the user by username or email.
+    identifier = request.identifier
+
+    user = db.query(User).filter(
+        (User.username == identifier)
+        | (User.email == identifier.lower())
+    ).first()
+
+    # Reject unknown users and incorrect passwords.
+    if user is None or not verify_password(
+        request.password,
+        user.hashed_password,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username/email or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Generate a JWT access token.
+    access_token = create_access_token(
+        data={
+            "sub": str(user.id),
+            "role": user.role,
+        }
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": 1800,
     }
 
 @app.get("/")
