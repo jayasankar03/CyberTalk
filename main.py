@@ -1,17 +1,33 @@
-
 import logging
 import time
-from fastapi import FastAPI, HTTPException, Depends, status
+import httpx
+
+from datetime import datetime
+
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Depends,
+    status,
+)
+from fastapi.security import (
+    HTTPBearer,
+    HTTPAuthorizationCredentials,
+)
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,
+    ConfigDict,
+)
 
+from auth import create_access_token, decode_access_token
 from database import get_db, create_db_tables
 from user_model import User
 from security import hash_password, verify_password
-from auth import create_access_token
-import httpx
-from fastapi import FastAPI, HTTPException, Depends, status
-from pydantic import BaseModel, Field, field_validator
+
 from agreement import AgreementResult
 from agreement_evaluator import (
     AgreementEvaluationError,
@@ -99,6 +115,66 @@ class LoginRequest(BaseModel):
             raise ValueError("Username or email is required.")
 
         return value
+class UserProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    email: str
+    role: str
+    created_at: datetime
+# JWT bearer authentication
+security = HTTPBearer(auto_error=False)
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
+
+    # Reject requests without an access token.
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials are required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Decode and validate the JWT.
+    try:
+        payload = decode_access_token(credentials.credentials)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired access token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Retrieve the user ID from the JWT subject.
+    subject = payload.get("sub")
+
+    if not isinstance(subject, str) or not subject.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid access token payload.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user_id = int(subject)
+
+    # Retrieve the authenticated user from the database.
+    user = db.query(User).filter(
+        User.id == user_id
+    ).first()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authenticated user not found.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
 class ChatRequest(BaseModel):
     message: str
 
@@ -236,7 +312,14 @@ def login_user(
         "token_type": "bearer",
         "expires_in": 1800,
     }
-
+@app.get(
+    "/users/me",
+    response_model=UserProfileResponse,
+)
+def get_my_profile(
+    current_user: User = Depends(get_current_user),
+):
+    return current_user
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
