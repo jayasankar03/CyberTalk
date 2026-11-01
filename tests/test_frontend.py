@@ -1,5 +1,6 @@
 
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from streamlit.testing.v1 import AppTest
@@ -9,7 +10,8 @@ class FrontendTests(unittest.TestCase):
 
     def test_page_heading_and_custom_persona_guidance(self):
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         self.assertEqual(app.title[0].value, "🛡️ CyberTalk")
@@ -23,7 +25,8 @@ class FrontendTests(unittest.TestCase):
 
     def test_empty_cybersecurity_question_is_rejected(self):
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         app.text_input[0].set_value("   ")
@@ -38,7 +41,8 @@ class FrontendTests(unittest.TestCase):
 
     def test_short_topic_is_rejected(self):
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         app.text_area[0].set_value("AB")
@@ -56,7 +60,8 @@ class FrontendTests(unittest.TestCase):
 
     def test_short_stakeholder_name_is_rejected(self):
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         app.text_area[0].set_value("Improve network security")
@@ -75,7 +80,8 @@ class FrontendTests(unittest.TestCase):
 
     def test_identical_stakeholders_are_rejected(self):
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         app.text_area[0].set_value("Improve phishing protection")
@@ -105,7 +111,8 @@ class FrontendTests(unittest.TestCase):
         mock_post.return_value = mock_response
 
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         app.text_input[0].set_value(
@@ -169,7 +176,8 @@ class FrontendTests(unittest.TestCase):
         mock_post.return_value = mock_response
 
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         app.text_area[0].set_value("Improve cloud security")
@@ -201,7 +209,6 @@ class FrontendTests(unittest.TestCase):
             )
         )
 
-
     @patch("requests.post")
     def test_qa_api_connection_error_is_handled(self, mock_post):
         import requests
@@ -209,7 +216,8 @@ class FrontendTests(unittest.TestCase):
         mock_post.side_effect = requests.exceptions.ConnectionError()
 
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         app.text_input[0].set_value("How does encryption work?")
@@ -230,7 +238,8 @@ class FrontendTests(unittest.TestCase):
         mock_post.side_effect = requests.exceptions.Timeout()
 
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         app.text_area[0].set_value("Improve cloud security")
@@ -259,7 +268,8 @@ class FrontendTests(unittest.TestCase):
         mock_post.return_value = mock_response
 
         app = AppTest.from_file(
-            "frontend.py", default_timeout=10
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         app.text_area[0].set_value("Improve cloud security")
@@ -274,6 +284,7 @@ class FrontendTests(unittest.TestCase):
                 for element in app.error
             )
         )
+
 
 if __name__ == "__main__":
     unittest.main()

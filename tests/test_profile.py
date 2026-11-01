@@ -61,7 +61,6 @@ def reset_test_database():
     # Clean up after the test.
     Base.metadata.drop_all(bind=engine)
 
-
 def create_test_user():
     response = client.post(
         "/register",
