@@ -8,7 +8,7 @@ from streamlit.testing.v1 import AppTest
 
 class FrontendTests(unittest.TestCase):
 
-    def run_authenticated_app(self):
+    def run_authenticated_app(self, history_records=None, history_detail=None):
         """Start the frontend with a mocked authenticated user."""
 
         app = AppTest.from_file(
@@ -16,10 +16,8 @@ class FrontendTests(unittest.TestCase):
             default_timeout=10
         ).run()
 
-        # Simulate an existing login session.
         app.session_state["access_token"] = "test-access-token"
 
-        # Mock the current-user profile API request.
         profile_response = Mock()
         profile_response.ok = True
         profile_response.status_code = 200
@@ -30,18 +28,42 @@ class FrontendTests(unittest.TestCase):
             "role": "user",
         }
 
+        history_response = Mock()
+        history_response.ok = True
+        history_response.status_code = 200
+        history_response.json.return_value = (
+            history_records if history_records is not None else []
+        )
+
+        detail_response = Mock()
+        detail_response.ok = True
+        detail_response.status_code = 200
+        detail_response.json.return_value = (
+            history_detail if history_detail is not None else {}
+        )
+
+        def mock_get(url, *args, **kwargs):
+            if url.endswith("/users/me"):
+                return profile_response
+
+            if "/history/" in url:
+                return detail_response
+
+            if url.endswith("/history"):
+                return history_response
+
+            raise AssertionError(f"Unexpected GET request: {url}")
+
         get_patcher = patch(
             "requests.get",
-            return_value=profile_response
+            side_effect=mock_get
         )
         get_patcher.start()
         self.addCleanup(get_patcher.stop)
 
-        # Rerun with the authenticated session.
         app.run()
 
         return app
-
     def test_page_heading_and_custom_persona_guidance(self):
         app = self.run_authenticated_app()
 
@@ -288,7 +310,202 @@ class FrontendTests(unittest.TestCase):
                 for element in app.error
             )
         )
+    @patch("requests.post")
+    def test_successful_qa_is_saved_to_history(self, mock_post):
+        qa_response = Mock()
+        qa_response.ok = True
+        qa_response.json.return_value = {
+            "answer": "Use MFA to protect user accounts."
+        }
 
+        save_response = Mock()
+        save_response.status_code = 201
+
+        mock_post.side_effect = [qa_response, save_response]
+
+        app = self.run_authenticated_app()
+
+        app.text_input[0].set_value(
+            "How can MFA protect user accounts?"
+        )
+        app.button[0].click().run(timeout=10)
+
+        self.assertEqual(mock_post.call_count, 2)
+
+        save_call = mock_post.call_args_list[1]
+
+        self.assertTrue(save_call.args[0].endswith("/history"))
+        self.assertEqual(
+            save_call.kwargs["headers"]["Authorization"],
+            "Bearer test-access-token"
+        )
+
+        saved_data = save_call.kwargs["json"]
+
+        self.assertEqual(saved_data["conversation_type"], "qa")
+        self.assertEqual(
+            saved_data["title"],
+            "How can MFA protect user accounts?"
+        )
+        self.assertIn(
+            "Use MFA to protect user accounts.",
+            saved_data["content"]
+        )
+
+        self.assertTrue(
+            any(
+                "saved to chat history" in element.value.lower()
+                for element in app.success
+            )
+        )
+
+    @patch("requests.post")
+    def test_successful_dialogue_is_saved_to_history(self, mock_post):
+        dialogue_response = Mock()
+        dialogue_response.ok = True
+        dialogue_response.json.return_value = {
+            "topic": "Improve cloud security",
+            "stakeholders": [
+                {"name": "Security Architect"},
+                {"name": "Cloud Engineer"},
+            ],
+            "rounds": 1,
+            "dialogue": [
+                {
+                    "turn": 1,
+                    "speaker": "Security Architect",
+                    "message": "We should enable MFA.",
+                },
+            ],
+            "agreement": {
+                "status": "partial_agreement",
+                "explanation": "The stakeholders partially agree.",
+                "shared_decision": "Plan an MFA rollout.",
+                "unresolved_disagreements": [],
+                "next_actions": ["Prepare a rollout plan."],
+            },
+        }
+
+        save_response = Mock()
+        save_response.status_code = 201
+
+        mock_post.side_effect = [
+            dialogue_response,
+            save_response,
+        ]
+
+        app = self.run_authenticated_app()
+
+        app.text_area[0].set_value("Improve cloud security")
+        app.text_input[1].set_value("Security Architect")
+        app.text_input[2].set_value("Cloud Engineer")
+
+        app.button[1].click().run(timeout=10)
+
+        self.assertEqual(mock_post.call_count, 2)
+
+        save_call = mock_post.call_args_list[1]
+
+        self.assertTrue(save_call.args[0].endswith("/history"))
+
+        saved_data = save_call.kwargs["json"]
+
+        self.assertEqual(
+            saved_data["conversation_type"],
+            "dialogue"
+        )
+        self.assertEqual(
+            saved_data["title"],
+            "Improve cloud security"
+        )
+        self.assertIn(
+            "Security Architect",
+            saved_data["content"]
+        )
+
+    def test_saved_conversation_can_be_opened(self):
+        history_records = [
+            {
+                "id": 1,
+                "conversation_type": "qa",
+                "title": "How does MFA work?",
+                "created_at": "2026-11-02T10:00:00",
+            }
+        ]
+
+        history_detail = {
+            "id": 1,
+            "conversation_type": "qa",
+            "title": "How does MFA work?",
+            "content": (
+                '{"question":"How does MFA work?",'
+                '"answer":"MFA adds another layer of authentication."}'
+            ),
+            "created_at": "2026-11-02T10:00:00",
+        }
+
+        app = self.run_authenticated_app(
+            history_records=history_records,
+            history_detail=history_detail,
+        )
+
+        open_button = next(
+            button
+            for button in app.button
+            if button.label == "Open Conversation"
+        )
+
+        open_button.click().run(timeout=10)
+
+        self.assertTrue(
+            any(
+                "MFA adds another layer of authentication."
+                in element.value
+                for element in app.markdown
+            )
+        )
+
+    @patch("requests.delete")
+    def test_saved_conversation_can_be_deleted(self, mock_delete):
+        history_records = [
+            {
+                "id": 1,
+                "conversation_type": "qa",
+                "title": "Old cybersecurity question",
+                "created_at": "2026-11-02T10:00:00",
+            }
+        ]
+
+        delete_response = Mock()
+        delete_response.ok = True
+        delete_response.status_code = 204
+
+        mock_delete.return_value = delete_response
+
+        app = self.run_authenticated_app(
+            history_records=history_records
+        )
+
+        delete_button = next(
+            button
+            for button in app.button
+            if button.label == "Delete Conversation"
+        )
+
+        delete_button.click().run(timeout=10)
+
+        mock_delete.assert_called_once()
+
+        delete_call = mock_delete.call_args
+
+        self.assertTrue(
+            delete_call.args[0].endswith("/history/1")
+        )
+
+        self.assertEqual(
+            delete_call.kwargs["headers"]["Authorization"],
+            "Bearer test-access-token"
+        )
 
 if __name__ == "__main__":
     unittest.main()
