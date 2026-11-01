@@ -3,7 +3,7 @@ import time
 import httpx
 
 from datetime import datetime
-
+from typing import Literal
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -26,6 +26,7 @@ from pydantic import (
 from auth import create_access_token, decode_access_token
 from database import get_db, create_db_tables
 from user_model import User
+from chat_history_model import ChatHistory
 from security import hash_password, verify_password
 
 from agreement import AgreementResult
@@ -125,7 +126,38 @@ class UserProfileResponse(BaseModel):
     created_at: datetime
 # JWT bearer authentication
 security = HTTPBearer(auto_error=False)
+class ChatHistoryCreateRequest(BaseModel):
+    conversation_type: Literal["qa", "dialogue"]
+    title: str = Field(min_length=1, max_length=500)
+    content: str = Field(min_length=1, max_length=50000)
 
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Conversation title cannot be empty.")
+
+        return value
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Conversation content cannot be empty.")
+
+        return value
+
+
+class ChatHistoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    conversation_type: str
+    title: str
+    content: str
+    created_at: datetime
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
@@ -601,11 +633,11 @@ async def dialogue(request: DialogueRequest):
         )
     except DialogueGenerationError:
         logger.exception(
-        "Invalid Ollama response during dialogue generation."
+            "Invalid Ollama response during dialogue generation."
         )
         raise HTTPException(
-        status_code=502,
-        detail="The AI service returned an invalid response. Please try again.",
+            status_code=502,
+            detail="The AI service returned an invalid response. Please try again.",
         )
     except httpx.HTTPError:
         logger.exception(
@@ -615,3 +647,115 @@ async def dialogue(request: DialogueRequest):
             status_code=502,
             detail="The AI service is temporarily unavailable. Please try again.",
         )
+
+# ==========================================
+# AUTHENTICATED CHAT HISTORY API
+# ==========================================
+
+@app.post(
+    "/history",
+    response_model=ChatHistoryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def save_chat_history(
+    request: ChatHistoryCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Save a conversation for the authenticated user."""
+
+    history = ChatHistory(
+        user_id=current_user.id,
+        conversation_type=request.conversation_type,
+        title=request.title,
+        content=request.content,
+    )
+
+    db.add(history)
+    db.commit()
+    db.refresh(history)
+
+    return history
+
+
+@app.get(
+    "/history",
+    response_model=list[ChatHistoryResponse],
+)
+def get_chat_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve all conversations belonging to the authenticated user."""
+
+    history_records = (
+        db.query(ChatHistory)
+        .filter(ChatHistory.user_id == current_user.id)
+        .order_by(
+            ChatHistory.created_at.desc(),
+            ChatHistory.id.desc(),
+        )
+        .all()
+    )
+
+    return history_records
+
+
+@app.get(
+    "/history/{history_id}",
+    response_model=ChatHistoryResponse,
+)
+def get_single_chat_history(
+    history_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve one conversation owned by the authenticated user."""
+
+    history = (
+        db.query(ChatHistory)
+        .filter(
+            ChatHistory.id == history_id,
+            ChatHistory.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if history is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found.",
+        )
+
+    return history
+
+
+@app.delete("/history/{history_id}")
+def delete_chat_history(
+    history_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete one conversation owned by the authenticated user."""
+
+    history = (
+        db.query(ChatHistory)
+        .filter(
+            ChatHistory.id == history_id,
+            ChatHistory.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if history is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found.",
+        )
+
+    db.delete(history)
+    db.commit()
+
+    return {
+        "message": "Conversation deleted successfully."
+    }
