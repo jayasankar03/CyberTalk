@@ -22,6 +22,221 @@ API_URL = os.getenv(
 
 
 # -----------------------------
+# Authentication
+# -----------------------------
+
+st.session_state.setdefault("access_token", None)
+
+
+def get_api_error(response):
+    """Extract a readable error message from an API response."""
+    try:
+        return response.json().get("detail", response.text)
+    except ValueError:
+        return response.text
+
+
+def get_auth_headers():
+    """Return the authentication header for the current user."""
+    token = st.session_state.get("access_token")
+    return {"Authorization": f"Bearer {token}"}
+
+
+# Verify the current session.
+current_user = None
+
+if st.session_state.get("access_token"):
+    try:
+        profile_response = requests.get(
+            f"{API_URL}/users/me",
+            headers=get_auth_headers(),
+            timeout=15,
+        )
+
+        if profile_response.status_code == 401:
+            st.session_state["access_token"] = None
+            st.warning("Your session has expired. Please log in again.")
+
+        elif not profile_response.ok:
+            st.error(
+                "Could not verify your account: "
+                f"{get_api_error(profile_response)}"
+            )
+            st.stop()
+
+        else:
+            current_user = profile_response.json()
+
+    except requests.exceptions.RequestException:
+        st.error(
+            "Could not connect to the CyberTalk API. "
+            f"Make sure FastAPI is running at {API_URL}."
+        )
+        st.stop()
+
+
+# Show login and registration when the user is not authenticated.
+if not st.session_state.get("access_token"):
+
+    st.title("🛡️ CyberTalk")
+    st.subheader("Welcome to CyberTalk")
+
+    login_tab, register_tab = st.tabs(
+        ["Sign In", "Create Account"]
+    )
+
+    with login_tab:
+        st.write("Sign in to access your CyberTalk workspace.")
+
+        with st.form("login_form"):
+            identifier = st.text_input(
+                "Username or Email",
+                max_chars=255,
+            )
+
+            login_password = st.text_input(
+                "Password",
+                type="password",
+            )
+
+            login_submitted = st.form_submit_button(
+                "Sign In",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if login_submitted:
+            if not identifier.strip() or not login_password:
+                st.error("Please enter your username/email and password.")
+
+            else:
+                try:
+                    with st.spinner("Signing you in..."):
+                        login_response = requests.post(
+                            f"{API_URL}/login",
+                            json={
+                                "identifier": identifier.strip(),
+                                "password": login_password,
+                            },
+                            timeout=30,
+                        )
+
+                    if login_response.ok:
+                        login_data = login_response.json()
+
+                        st.session_state["access_token"] = (
+                            login_data["access_token"]
+                        )
+
+                        st.success("Login successful!")
+                        st.rerun()
+
+                    else:
+                        st.error(
+                            f"Login failed: {get_api_error(login_response)}"
+                        )
+
+                except requests.exceptions.RequestException as exc:
+                    st.error(f"Could not connect to the API: {exc}")
+
+                except (ValueError, KeyError):
+                    st.error("The API returned an invalid login response.")
+
+    with register_tab:
+        st.write("Create a new CyberTalk account.")
+
+        with st.form("registration_form"):
+            new_username = st.text_input(
+                "Username",
+                max_chars=50,
+            )
+
+            new_email = st.text_input(
+                "Email",
+                max_chars=255,
+            )
+
+            new_password = st.text_input(
+                "Password",
+                type="password",
+            )
+
+            confirm_password = st.text_input(
+                "Confirm Password",
+                type="password",
+            )
+
+            register_submitted = st.form_submit_button(
+                "Create Account",
+                use_container_width=True,
+            )
+
+        if register_submitted:
+            if not all([
+                new_username.strip(),
+                new_email.strip(),
+                new_password,
+                confirm_password,
+            ]):
+                st.error("Please complete all registration fields.")
+
+            elif new_password != confirm_password:
+                st.error("Passwords do not match.")
+
+            else:
+                try:
+                    with st.spinner("Creating your account..."):
+                        register_response = requests.post(
+                            f"{API_URL}/register",
+                            json={
+                                "username": new_username.strip(),
+                                "email": new_email.strip(),
+                                "password": new_password,
+                            },
+                            timeout=30,
+                        )
+
+                    if register_response.status_code == 201:
+                        st.success(
+                            "Account created successfully! "
+                            "Please sign in using the Sign In tab."
+                        )
+
+                    else:
+                        st.error(
+                            "Registration failed: "
+                            f"{get_api_error(register_response)}"
+                        )
+
+                except requests.exceptions.RequestException as exc:
+                    st.error(f"Could not connect to the API: {exc}")
+
+                except ValueError:
+                    st.error("The API returned an invalid response.")
+
+    # Do not display the application until login succeeds.
+    st.stop()
+
+
+# -----------------------------
+# Authenticated user controls
+# -----------------------------
+
+st.sidebar.success(
+    f"Signed in as {current_user.get('username', 'User')}"
+)
+
+st.sidebar.caption(
+    f"Role: {current_user.get('role', 'user')}"
+)
+
+if st.sidebar.button("Log Out", use_container_width=True):
+    st.session_state["access_token"] = None
+    st.session_state.pop("qa_result", None)
+    st.session_state.pop("cybertalk_result", None)
+    st.rerun()
+
+# -----------------------------
 # Page heading
 # -----------------------------
 
