@@ -134,7 +134,9 @@ class PasswordResetRequest(BaseModel):
             raise ValueError("Please provide a valid email address.")
 
         return value
-
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    new_password: str = Field(min_length=8, max_length=128)
 class UserProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -422,7 +424,99 @@ def request_password_reset(
             "Password reset email delivery failed."
         )
     return generic_response
+@app.post("/password-reset/confirm")
+def confirm_password_reset(
+    request: PasswordResetConfirmRequest,
+    db: Session = Depends(get_db),
+):
+    """Verify a reset token and securely update the user's password."""
 
+    # Hash the supplied token before searching the database.
+    token_hash = hash_reset_token(request.token)
+
+    reset_record = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token_hash == token_hash
+    ).first()
+
+    # Use one generic error for invalid, expired, and used tokens.
+    invalid_token_error = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired password reset token.",
+    )
+
+    if reset_record is None or reset_record.used_at is not None:
+        raise invalid_token_error
+
+    current_time = datetime.now(timezone.utc)
+
+    expires_at = reset_record.expires_at
+
+    # SQLite may return a naive datetime even when timezone=True.
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at <= current_time:
+        raise invalid_token_error
+
+    user = db.query(User).filter(
+        User.id == reset_record.user_id
+    ).first()
+
+    if user is None:
+        raise invalid_token_error
+
+    try:
+        # Atomically claim the token so concurrent requests cannot
+        # successfully use the same token more than once.
+        updated_count = (
+            db.query(PasswordResetToken)
+            .filter(
+                PasswordResetToken.id == reset_record.id,
+                PasswordResetToken.used_at.is_(None),
+            )
+            .update(
+                {"used_at": current_time},
+                synchronize_session=False,
+            )
+        )
+
+        if updated_count != 1:
+            db.rollback()
+            raise invalid_token_error
+
+        # Hash the new password using the existing Argon2 function.
+        user.hashed_password = hash_password(
+            request.new_password
+        )
+
+        # Invalidate every other outstanding reset token for this user.
+        db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        ).update(
+            {"used_at": current_time},
+            synchronize_session=False,
+        )
+
+        # Save the password change and token consumption together.
+        db.commit()
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to complete password reset."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to reset password. Please try again.",
+        )
+
+    return {
+        "message": "Password has been reset successfully."
+    }
 @app.get(
     "/users/me",
     response_model=UserProfileResponse,

@@ -11,7 +11,10 @@ from sqlalchemy.pool import StaticPool
 from database import Base, get_db
 from main import app
 from password_reset_model import PasswordResetToken
-from security import hash_reset_token
+from security import (
+    hash_reset_token,
+    verify_password,
+)
 from user_model import User
 
 
@@ -311,6 +314,157 @@ class PasswordResetAPITests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
 
+
+    def create_reset_token(self, raw_token, expires_in_minutes=30):
+        """Create a reset token directly in the test database."""
+        db = self.TestingSessionLocal()
+        try:
+            user = db.query(User).filter(
+                User.email == "reset@example.com"
+            ).first()
+
+            token_record = PasswordResetToken(
+                user_id=user.id,
+                token_hash=hash_reset_token(raw_token),
+                expires_at=(
+                    datetime.now(timezone.utc)
+                    + timedelta(minutes=expires_in_minutes)
+                ),
+            )
+
+            db.add(token_record)
+            db.commit()
+        finally:
+            db.close()
+
+    def test_password_reset_confirmation_updates_password(self):
+        raw_token = "valid_password_reset_token_123"
+        new_password = "NewSecurePass456"
+
+        self.create_reset_token(raw_token)
+
+        response = self.client.post(
+            "/password-reset/confirm",
+            json={
+                "token": raw_token,
+                "new_password": new_password,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["message"],
+            "Password has been reset successfully.",
+        )
+
+        db = self.TestingSessionLocal()
+        try:
+            user = db.query(User).filter(
+                User.email == "reset@example.com"
+            ).first()
+
+            self.assertTrue(
+                verify_password(
+                    new_password,
+                    user.hashed_password,
+                )
+            )
+            self.assertFalse(
+                verify_password(
+                    "SecurePass123",
+                    user.hashed_password,
+                )
+            )
+        finally:
+            db.close()
+
+    def test_password_reset_confirmation_rejects_invalid_token(self):
+        response = self.client.post(
+            "/password-reset/confirm",
+            json={
+                "token": "invalid_password_reset_token_123",
+                "new_password": "NewSecurePass456",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_password_reset_confirmation_rejects_expired_token(self):
+        raw_token = "expired_password_reset_token_123"
+        self.create_reset_token(raw_token, expires_in_minutes=-1)
+
+        response = self.client.post(
+            "/password-reset/confirm",
+            json={
+                "token": raw_token,
+                "new_password": "NewSecurePass456",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_password_reset_confirmation_rejects_token_reuse(self):
+        raw_token = "single_use_password_reset_token_123"
+        self.create_reset_token(raw_token)
+
+        payload = {
+            "token": raw_token,
+            "new_password": "NewSecurePass456",
+        }
+
+        first_response = self.client.post(
+            "/password-reset/confirm",
+            json=payload,
+        )
+
+        second_response = self.client.post(
+            "/password-reset/confirm",
+            json=payload,
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 400)
+
+    def test_password_reset_invalidates_other_outstanding_tokens(self):
+        first_token = "first_outstanding_reset_token_123"
+        second_token = "second_outstanding_reset_token_123"
+
+        self.create_reset_token(first_token)
+        self.create_reset_token(second_token)
+
+        response = self.client.post(
+            "/password-reset/confirm",
+            json={
+                "token": first_token,
+                "new_password": "NewSecurePass456",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        second_response = self.client.post(
+            "/password-reset/confirm",
+            json={
+                "token": second_token,
+                "new_password": "AnotherSecurePass789",
+            },
+        )
+
+        self.assertEqual(second_response.status_code, 400)
+
+    def test_password_reset_confirmation_rejects_short_password(self):
+        raw_token = "short_password_test_reset_token_123"
+        self.create_reset_token(raw_token)
+
+        response = self.client.post(
+            "/password-reset/confirm",
+            json={
+                "token": raw_token,
+                "new_password": "short",
+            },
+        )
+
+        self.assertEqual(response.status_code, 422)
 
 if __name__ == "__main__":
     unittest.main()
