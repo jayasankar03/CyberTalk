@@ -2,7 +2,7 @@ import logging
 import time
 import httpx
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from fastapi import (
     FastAPI,
@@ -27,8 +27,13 @@ from auth import create_access_token, decode_access_token
 from database import get_db, create_db_tables
 from user_model import User
 from chat_history_model import ChatHistory
-from security import hash_password, verify_password
-
+from security import (
+    hash_password,
+    verify_password,
+    generate_password_reset_token,
+    hash_reset_token,
+)
+from password_reset_model import PasswordResetToken
 from agreement import AgreementResult
 from agreement_evaluator import (
     AgreementEvaluationError,
@@ -116,6 +121,20 @@ class LoginRequest(BaseModel):
             raise ValueError("Username or email is required.")
 
         return value
+
+class PasswordResetRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        value = value.strip().lower()
+
+        if "@" not in value or "." not in value.split("@")[-1]:
+            raise ValueError("Please provide a valid email address.")
+
+        return value
+
 class UserProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -344,6 +363,56 @@ def login_user(
         "token_type": "bearer",
         "expires_in": 1800,
     }
+
+@app.post("/password-reset/request")
+def request_password_reset(
+    request: PasswordResetRequest,
+    db: Session = Depends(get_db),
+):
+    # Use the same response for existing and unknown email addresses.
+    generic_response = {
+        "message": (
+            "If an account exists with this email, "
+            "password reset instructions will be sent."
+        )
+    }
+
+    user = db.query(User).filter(
+        User.email == request.email
+    ).first()
+
+    # Do not reveal whether the email is registered.
+    if user is None:
+        return generic_response
+
+    # Generate a secure token and store only its SHA-256 hash.
+    reset_token = generate_password_reset_token()
+    token_hash = hash_reset_token(reset_token)
+
+    current_time = datetime.now(timezone.utc)
+
+    reset_record = PasswordResetToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=current_time + timedelta(minutes=30),
+    )
+
+    try:
+        db.add(reset_record)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to create a password reset request."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to process password reset request.",
+        )
+
+    return generic_response
+
 @app.get(
     "/users/me",
     response_model=UserProfileResponse,
