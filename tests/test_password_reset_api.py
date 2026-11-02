@@ -43,7 +43,10 @@ class PasswordResetAPITests(unittest.TestCase):
 
         self.startup_patch = patch("main.create_db_tables")
         self.startup_patch.start()
-
+        self.email_sender_patch = patch(
+            "main.send_password_reset_email"
+        )
+        self.email_sender_mock = self.email_sender_patch.start()
         self.client = TestClient(app)
 
         # Create a test user.
@@ -61,6 +64,7 @@ class PasswordResetAPITests(unittest.TestCase):
     def tearDown(self):
         self.client.close()
         app.dependency_overrides.clear()
+        self.email_sender_patch.stop()
         self.startup_patch.stop()
         Base.metadata.drop_all(bind=self.engine)
         self.engine.dispose()
@@ -258,7 +262,47 @@ class PasswordResetAPITests(unittest.TestCase):
             )
         finally:
             db.close()
+    def test_password_reset_email_is_sent_with_original_token(self):
+        raw_token = "email_delivery_test_token"
 
+        with patch(
+            "main.generate_password_reset_token",
+            return_value=raw_token,
+        ):
+            response = self.client.post(
+                "/password-reset/request",
+                json={"email": "reset@example.com"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.email_sender_mock.assert_called_once_with(
+            recipient_email="reset@example.com",
+            reset_token=raw_token,
+        )
+
+        self.assertNotIn(raw_token, response.text)
+
+    def test_email_delivery_failure_keeps_generic_response(self):
+        self.email_sender_mock.side_effect = RuntimeError(
+            "SMTP connection failed"
+        )
+
+        response = self.client.post(
+            "/password-reset/request",
+            json={"email": "reset@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "message": (
+                    "If an account exists with this email, "
+                    "password reset instructions will be sent."
+                )
+            },
+        )
     def test_invalid_email_is_rejected(self):
         response = self.client.post(
             "/password-reset/request",

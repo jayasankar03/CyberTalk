@@ -1,7 +1,7 @@
 import logging
 import time
 import httpx
-
+from email_service import send_password_reset_email
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 from fastapi import (
@@ -410,7 +410,17 @@ def request_password_reset(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to process password reset request.",
         )
-
+    # Send the reset link without exposing whether an account exists.
+    try:
+        send_password_reset_email(
+            recipient_email=user.email,
+            reset_token=reset_token,
+        )
+    except Exception:
+        # Keep the response generic and do not log the token or email.
+        logger.warning(
+            "Password reset email delivery failed."
+        )
     return generic_response
 
 @app.get(
