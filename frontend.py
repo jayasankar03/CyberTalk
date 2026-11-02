@@ -143,8 +143,105 @@ if st.session_state.get("access_token"):
 
 if not st.session_state.get("access_token"):
 
-    about_tab, login_tab, register_tab = st.tabs(
-        ["About CyberTalk", "Sign In", "Create Account"]
+    # -------------------------
+    # Password reset confirmation
+    # -------------------------
+
+    reset_token = st.query_params.get("token", "")
+
+    if reset_token:
+
+        st.title("Reset Your Password")
+
+        st.write(
+            "Enter your new password to regain access to CyberTalk."
+        )
+
+        with st.form("password_reset_confirm_form"):
+
+            new_reset_password = st.text_input(
+                "New Password",
+                type="password",
+                max_chars=128,
+            )
+
+            confirm_reset_password = st.text_input(
+                "Confirm New Password",
+                type="password",
+                max_chars=128,
+            )
+
+            reset_submitted = st.form_submit_button(
+                "Reset Password",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if reset_submitted:
+
+            if not new_reset_password or not confirm_reset_password:
+
+                st.error("Please complete both password fields.")
+
+            elif len(new_reset_password) < 8:
+
+                st.error(
+                    "Password must contain at least 8 characters."
+                )
+
+            elif new_reset_password != confirm_reset_password:
+
+                st.error("Passwords do not match.")
+
+            else:
+
+                try:
+                    with st.spinner("Updating your password..."):
+
+                        reset_response = requests.post(
+                            f"{API_URL}/password-reset/confirm",
+                            json={
+                                "token": reset_token,
+                                "new_password": new_reset_password,
+                            },
+                            timeout=30,
+                        )
+
+                    if reset_response.ok:
+
+                        st.query_params.clear()
+
+                        st.success(
+                            "Password reset successful! "
+                            "You can now sign in with your new password."
+                        )
+
+                    else:
+
+                        st.error(
+                            "Password reset failed: "
+                            f"{get_api_error(reset_response)}"
+                        )
+
+                except requests.exceptions.RequestException as exc:
+
+                    st.error(
+                        f"Could not connect to the API: {exc}"
+                    )
+
+        st.stop()
+
+    # -------------------------
+    # Authentication tabs
+    # -------------------------
+
+    about_tab, login_tab, register_tab, forgot_tab = st.tabs(
+        [
+            "About CyberTalk",
+            "Sign In",
+            "Create Account",
+            "Forgot Password",
+        ]
     )
 
     # -------------------------
@@ -429,7 +526,76 @@ if not st.session_state.get("access_token"):
                         "The API returned an invalid response."
                     )
 
+    # -------------------------
+    # Forgot Password
+    # -------------------------
+
+    with forgot_tab:
+
+        st.write(
+            "Enter your registered email address. "
+            "We'll send you a password-reset link."
+        )
+
+        with st.form("password_reset_request_form"):
+
+            reset_email = st.text_input(
+                "Registered Email",
+                max_chars=255,
+            )
+
+            request_reset_submitted = st.form_submit_button(
+                "Send Reset Link",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if request_reset_submitted:
+
+            if not reset_email.strip():
+
+                st.error(
+                    "Please enter your registered email address."
+                )
+
+            else:
+
+                try:
+                    with st.spinner("Sending password-reset email..."):
+
+                        request_reset_response = requests.post(
+                            f"{API_URL}/password-reset/request",
+                            json={
+                                "email": reset_email.strip()
+                            },
+                            timeout=30,
+                        )
+
+                    if request_reset_response.ok:
+
+                        st.success(
+                            request_reset_response.json().get(
+                                "message",
+                                "If an account exists for that email, "
+                                "a password-reset link has been sent."
+                            )
+                        )
+
+                    else:
+
+                        st.error(
+                            "Could not process the request: "
+                            f"{get_api_error(request_reset_response)}"
+                        )
+
+                except requests.exceptions.RequestException as exc:
+
+                    st.error(
+                        f"Could not connect to the API: {exc}"
+                    )
+
     st.stop()
+
 
 
 # -----------------------------
