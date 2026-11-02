@@ -143,12 +143,118 @@ if st.session_state.get("access_token"):
 
 if not st.session_state.get("access_token"):
 
-    st.title("🛡️ CyberTalk")
-    st.subheader("Welcome to CyberTalk")
-
-    login_tab, register_tab = st.tabs(
-        ["Sign In", "Create Account"]
+    about_tab, login_tab, register_tab = st.tabs(
+        ["About CyberTalk", "Sign In", "Create Account"]
     )
+
+    # -------------------------
+    # About CyberTalk
+    # -------------------------
+
+    with about_tab:
+
+        st.title("🛡️ CyberTalk")
+
+        st.subheader("Two Chatbots, One Agreement")
+
+        st.write(
+            "CyberTalk is a Generative AI application that brings "
+            "two cybersecurity stakeholders together to discuss "
+            "important security topics and reach informed decisions."
+        )
+
+        st.divider()
+
+        st.header("🎯 Project Objective")
+
+        st.write(
+            "The objective of CyberTalk is to demonstrate how "
+            "Generative AI can facilitate structured cybersecurity "
+            "discussions between professionals with different "
+            "responsibilities and perspectives."
+        )
+
+        st.header("🚀 Key Features")
+
+        feature_col1, feature_col2 = st.columns(2)
+
+        with feature_col1:
+
+            st.markdown("#### 💬 Stakeholder Dialogue")
+
+            st.write(
+                "Create discussions between any two stakeholders "
+                "using custom professional roles."
+            )
+
+            st.markdown("#### 🤖 Cybersecurity Q&A")
+
+            st.write(
+                "Ask cybersecurity-related questions and receive "
+                "AI-generated answers."
+            )
+
+            st.markdown("#### 📚 Chat History")
+
+            st.write(
+                "Save, revisit, and delete your previous conversations."
+            )
+
+        with feature_col2:
+
+            st.markdown("#### ⚖️ Agreement Evaluation")
+
+            st.write(
+                "Evaluate whether stakeholders reach an agreement, "
+                "partially agree, or disagree."
+            )
+
+            st.markdown("#### 🔄 Configurable Discussions")
+
+            st.write(
+                "Choose between one and five discussion rounds."
+            )
+
+            st.markdown("#### 🔐 User Authentication")
+
+            st.write(
+                "Register an account and securely access your "
+                "personal CyberTalk workspace."
+            )
+
+        st.divider()
+
+        st.header("⚙️ How CyberTalk Works")
+
+        st.markdown(
+            """
+            1. Enter a cybersecurity discussion topic.
+            2. Define two different stakeholder roles.
+            3. Select the number of discussion rounds.
+            4. Let the AI generate an alternating discussion.
+            5. Review closing statements and the final agreement.
+            6. Explore shared decisions, disagreements, and next actions.
+            """
+        )
+
+        st.header("🛠️ Technology Stack")
+
+        st.write(
+            "Python · FastAPI · Streamlit · Ollama · "
+            "Llama 3.2 · SQLAlchemy · SQLite · Pydantic"
+        )
+
+        st.divider()
+
+        st.info(
+            "Ready to explore CyberTalk? Select the Sign In tab "
+            "to access your workspace or Create Account to register."
+        )
+
+        st.caption(
+            "CyberTalk — Two Chatbots, One Agreement | "
+            "Generative AI Cybersecurity Project"
+        )
 
     # -------------------------
     # Login

@@ -7,7 +7,50 @@ from streamlit.testing.v1 import AppTest
 
 
 class FrontendTests(unittest.TestCase):
+    def test_about_page_is_displayed_first(self):
 
+        app = AppTest.from_file(
+            str(
+                Path(__file__).resolve().parent.parent
+                / "frontend.py"
+            ),
+            default_timeout=10,
+        ).run()
+
+        self.assertTrue(
+            any(
+                "CyberTalk" in element.value
+                for element in app.title
+            )
+        )
+
+        self.assertTrue(
+            any(
+                "Two Chatbots, One Agreement"
+                in element.value
+                for element in app.subheader
+            )
+        )
+
+    def test_about_page_contains_project_features(self):
+
+        app = AppTest.from_file(
+            str(
+                Path(__file__).resolve().parent.parent
+                / "frontend.py"
+            ),
+            default_timeout=10,
+        ).run()
+
+        page_text = " ".join(
+            element.value
+            for element in app.markdown
+        )
+
+        self.assertIn("Stakeholder Dialogue", page_text)
+        self.assertIn("Cybersecurity Q&A", page_text)
+        self.assertIn("Agreement Evaluation", page_text)
+        self.assertIn("Chat History", page_text)
     def run_authenticated_app(self, history_records=None, history_detail=None):
         """Start the frontend with a mocked authenticated user."""
 
