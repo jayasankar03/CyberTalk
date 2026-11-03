@@ -661,15 +661,27 @@ async def generate_persona_response(
     async with httpx.AsyncClient(timeout=300.0) as client:
         response = await client.post(OLLAMA_URL, json=payload)
         response.raise_for_status()
-    try:
-        result = response.json()
-    except ValueError as exc:
-        raise DialogueGenerationError(
-            "Ollama returned an invalid JSON response."
-        ) from exc
+        try:
+            result = response.json()
+        except ValueError as exc:
+            raise DialogueGenerationError(
+                "Ollama returned an invalid JSON response."
+            ) from exc
+
+        logger.info(
+            "Ollama metrics - %s: total=%.2fs, load=%.2fs, "
+            "prompt=%.2fs, generation=%.2fs, "
+            "prompt_tokens=%s, generated_tokens=%s",
+            stakeholder_name,
+            result.get("total_duration", 0) / 1_000_000_000,
+            result.get("load_duration", 0) / 1_000_000_000,
+            result.get("prompt_eval_duration", 0) / 1_000_000_000,
+            result.get("eval_duration", 0) / 1_000_000_000,
+            result.get("prompt_eval_count", 0),
+            result.get("eval_count", 0),
+        )
 
     return extract_dialogue_content(result)
-
 
 @app.post("/chat")
 async def chat(request: ChatRequest):

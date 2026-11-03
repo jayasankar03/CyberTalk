@@ -1,14 +1,16 @@
-
 import json
+import logging
 
 import httpx
 
 from agreement import AgreementResult
 
 
+logger = logging.getLogger("cybertalk")
+
+
 OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 MODEL_NAME = "llama3.2:3b"
-
 
 class AgreementEvaluationError(Exception):
     """Raised when agreement evaluation fails."""
@@ -97,6 +99,18 @@ Allowed statuses: agreement_reached, partial_agreement, no_agreement.
             response = await client.post(OLLAMA_URL, json=payload)
             response.raise_for_status()
             result = response.json()
+
+            logger.info(
+                "Ollama metrics - agreement evaluation: "
+                "total=%.2fs, load=%.2fs, prompt=%.2fs, "
+                "generation=%.2fs, prompt_tokens=%s, generated_tokens=%s",
+                result.get("total_duration", 0) / 1_000_000_000,
+                result.get("load_duration", 0) / 1_000_000_000,
+                result.get("prompt_eval_duration", 0) / 1_000_000_000,
+                result.get("eval_duration", 0) / 1_000_000_000,
+                result.get("prompt_eval_count", 0),
+                result.get("eval_count", 0),
+            )
 
         content = result["message"]["content"]
         parsed_result = json.loads(content)
