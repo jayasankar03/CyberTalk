@@ -34,39 +34,50 @@ async def evaluate_agreement(
     )
 
     prompt = f"""
-Evaluate this cybersecurity discussion using only the evidence provided.
+Evaluate the cybersecurity discussion objectively.
 
 Topic: {topic}
 
-Complete dialogue:
+Dialogue:
 {dialogue}
 
-Select exactly one status:
-- agreement_reached: Both stakeholders explicitly support the same
-  clear decision, with no material unresolved disagreement.
-- partial_agreement: Common ground exists, but a material issue,
-  disagreement, or condition remains unresolved.
-- no_agreement: No meaningful mutually accepted decision exists.
+Choose exactly one status:
+- agreement_reached: Both stakeholders explicitly accept the same
+  clear decision, with no material unresolved issues.
+- partial_agreement: They share some decisions, but a material
+  disagreement, condition, or issue remains unresolved.
+- no_agreement: They have not accepted any meaningful common decision.
 
-Rules:
-- Include both closing statements in the evaluation.
-- A proposal is not an agreement unless both stakeholders support it.
-- Check contradictions, including conflicting budget figures.
-- Separate agreed decisions from proposed actions.
-- Do not invent facts or infer consent.
-- If evidence is insufficient, do not claim full agreement.
-- Keep explanations concise and lists focused.
+Evaluation rules:
+- Evaluate every message, including both closing statements.
+- A proposal or suggestion is not approval.
+- Do not infer consent or invent facts.
+- Identify conflicting commitments, conditions, and budget figures.
+- Put only mutually accepted decisions in shared_decision.
+- Record material unresolved issues in unresolved_disagreements.
+- Include practical next actions where needed.
+- If uncertain, do not declare full agreement.
+- Keep the response concise and evidence-based.
+- A stakeholder's general support does not mean approval of every
+  specific amount, budget, deadline, or implementation detail.
+- Record a specific commitment as shared only when both stakeholders
+  explicitly accept that commitment.
+- Treat third-party approval, such as HR approval, as a dependency
+  when it is still outstanding. Include it in next_actions.
+- Do not describe an initiative as fully approved when required
+  stakeholder approval is still pending.
+- Distinguish agreement between the two discussion participants from
+  approval by people or teams outside the discussion.
+- Preserve important conditions and dependencies in the evaluation.
 
 Return only valid JSON with exactly these fields:
 {{
   "status": "agreement_reached",
-  "explanation": "Brief evidence-based explanation.",
+  "explanation": "Brief explanation based on the dialogue.",
   "shared_decision": "Mutually accepted decision, or null.",
   "unresolved_disagreements": [],
   "next_actions": []
 }}
-
-Allowed statuses: agreement_reached, partial_agreement, no_agreement.
 """
 
     payload = {
@@ -76,9 +87,8 @@ Allowed statuses: agreement_reached, partial_agreement, no_agreement.
                 "role": "system",
                 "content": (
                     "You are an impartial cybersecurity agreement evaluator. "
-                    "Assess the supplied dialogue carefully. Do not infer "
-                    "consent, invent facts, or treat proposals as approvals. "
-                    "Return a structured JSON result."
+                    "Use only the supplied dialogue. Return valid JSON "
+                    "matching the requested structure."
                 ),
             },
             {

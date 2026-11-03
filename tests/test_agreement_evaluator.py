@@ -252,6 +252,71 @@ class AgreementEvaluatorTests(unittest.TestCase):
         self.assertTrue(result.unresolved_disagreements)
         self.assertTrue(result.next_actions)
 
+    def test_proposed_budget_is_not_treated_as_approved(self):
+        expected = {
+            "status": "partial_agreement",
+            "explanation": (
+                "Both stakeholders support the initiative, "
+                "but the proposed $100,000 budget was not explicitly approved."
+            ),
+            "shared_decision": (
+                "Implement enhanced phishing protection measures."
+            ),
+            "unresolved_disagreements": [
+                "The proposed $100,000 budget has not been explicitly approved."
+            ],
+            "next_actions": [
+                "Obtain explicit approval for the proposed $100,000 budget."
+            ],
+        }
+
+        transcript = make_transcript(
+            "I support implementing enhanced phishing protection measures.",
+            (
+                "I support the approach and propose allocating "
+                "$100,000 to implement it."
+            ),
+        )
+
+        result = self.evaluate_with_response(expected, transcript)
+
+        self.assertEqual(result.status, "partial_agreement")
+        self.assertNotIn("$100,000", result.shared_decision)
+        self.assertTrue(result.unresolved_disagreements)
+        self.assertTrue(result.next_actions)
+
+    def test_pending_third_party_approval_is_recorded_as_dependency(self):
+        expected = {
+            "status": "agreement_reached",
+            "explanation": (
+                "Both stakeholders agree on the proposed implementation, "
+                "but HR approval is still required."
+            ),
+            "shared_decision": (
+                "Implement enhanced security awareness training."
+            ),
+            "unresolved_disagreements": [],
+            "next_actions": [
+                "Obtain HR approval before implementation."
+            ],
+        }
+
+        transcript = make_transcript(
+            "I support implementing enhanced security awareness training.",
+            (
+                "I agree with the implementation, subject to obtaining "
+                "approval and buy-in from HR."
+            ),
+        )
+
+        result = self.evaluate_with_response(expected, transcript)
+
+        self.assertEqual(result.status, "agreement_reached")
+        self.assertTrue(result.shared_decision)
+        self.assertTrue(result.next_actions)
+        self.assertTrue(
+            any("HR" in action for action in result.next_actions)
+        )
 
     def test_invalid_status_is_rejected(self):
         expected = {
