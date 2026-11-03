@@ -33,6 +33,7 @@ pydantic_core==2.50.1
 pydeck==0.9.3
 PyJWT==2.15.1
 python-dateutil==3.0.0
+python-dotenv==1.2.4
 python-multipart==0.0.32
 referencing==0.37.0
 requests==2.34.2

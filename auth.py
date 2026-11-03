@@ -6,11 +6,14 @@ from typing import Any
 import jwt
 from jwt.exceptions import InvalidTokenError
 
+from dotenv import load_dotenv
+
+# Load environment variables from the project .env file.
+load_dotenv()
 
 # JWT configuration
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
 
 def get_secret_key() -> str:
     """
