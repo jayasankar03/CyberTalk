@@ -711,9 +711,11 @@ async def chat(request: ChatRequest):
             detail="The AI service is temporarily unavailable. Please try again.",
         )
 
+
 @app.post("/dialogue")
 async def dialogue(request: DialogueRequest):
     dialogue_start = time.perf_counter()
+    generation_start = time.perf_counter()
 
     stakeholder_1 = request.stakeholder_1.strip()
     stakeholder_2 = request.stakeholder_2.strip()
@@ -777,6 +779,10 @@ async def dialogue(request: DialogueRequest):
                 "message": reply,
             })
 
+        generation_duration = (
+            time.perf_counter() - generation_start
+        )
+
         # Evaluate the completed dialogue.
         evaluation_start = time.perf_counter()
 
@@ -785,14 +791,18 @@ async def dialogue(request: DialogueRequest):
             transcript=transcript,
         )
 
-        logger.info(
-            "Agreement evaluation completed in %.2f seconds",
-            time.perf_counter() - evaluation_start,
+        evaluation_duration = (
+            time.perf_counter() - evaluation_start
         )
 
+        total_duration = time.perf_counter() - dialogue_start
+
         logger.info(
-            "Total dialogue request completed in %.2f seconds",
-            time.perf_counter() - dialogue_start,
+            "Dialogue performance: generation=%.2fs, "
+            "evaluation=%.2fs, total=%.2fs",
+            generation_duration,
+            evaluation_duration,
+            total_duration,
         )
 
         return {
@@ -805,6 +815,18 @@ async def dialogue(request: DialogueRequest):
             ],
             "dialogue": transcript,
             "agreement": agreement.model_dump(),
+            "performance": {
+                "generation_seconds": round(
+                    generation_duration, 2
+                ),
+                "evaluation_seconds": round(
+                    evaluation_duration, 2
+                ),
+                "total_seconds": round(
+                    total_duration, 2
+                ),
+                "dialogue_entries": len(transcript),
+            },
         }
 
     except AgreementEvaluationError:
@@ -816,6 +838,7 @@ async def dialogue(request: DialogueRequest):
             status_code=502,
             detail="The agreement evaluation service failed. Please try again.",
         )
+
     except DialogueGenerationError:
         logger.exception(
             "Invalid Ollama response during dialogue generation."
@@ -824,6 +847,7 @@ async def dialogue(request: DialogueRequest):
             status_code=502,
             detail="The AI service returned an invalid response. Please try again.",
         )
+
     except httpx.HTTPError:
         logger.exception(
             "Ollama communication failed during dialogue generation."

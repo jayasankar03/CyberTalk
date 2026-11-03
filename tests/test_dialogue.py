@@ -65,7 +65,22 @@ class DialogueRequestTests(unittest.TestCase):
 
         # One regular round plus two closing statements.
         self.assertEqual(len(result["dialogue"]), 4)
+        # Verify the dialogue performance metrics are returned.
+        performance = result["performance"]
 
+        self.assertEqual(
+            set(performance.keys()),
+            {
+                "generation_seconds",
+                "evaluation_seconds",
+                "total_seconds",
+                "dialogue_entries",
+            },
+        )
+        self.assertEqual(performance["dialogue_entries"], 4)
+        self.assertGreaterEqual(performance["generation_seconds"], 0)
+        self.assertGreaterEqual(performance["evaluation_seconds"], 0)
+        self.assertGreaterEqual(performance["total_seconds"], 0)
         # Verify the stakeholders alternate in the expected order.
         self.assertEqual(
             [item["speaker"] for item in result["dialogue"]],

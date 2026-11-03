@@ -1194,7 +1194,35 @@ if result:
         f"**Discussion rounds:** "
         f"{result.get('rounds', 'Unknown')}"
     )
+    # Display AI performance metrics.
+    performance = result.get("performance", {})
 
+    if isinstance(performance, dict) and performance:
+
+        st.divider()
+        st.subheader("⏱️ AI Performance")
+
+        perf_col1, perf_col2, perf_col3 = st.columns(3)
+
+        perf_col1.metric(
+            "Dialogue generation",
+            f"{performance.get('generation_seconds', 0):.2f} s",
+        )
+
+        perf_col2.metric(
+            "Agreement evaluation",
+            f"{performance.get('evaluation_seconds', 0):.2f} s",
+        )
+
+        perf_col3.metric(
+            "Total processing time",
+            f"{performance.get('total_seconds', 0):.2f} s",
+        )
+
+        st.caption(
+            "Dialogue entries generated: "
+            f"{performance.get('dialogue_entries', 0)}"
+        )
     st.caption(
         "The final two statements are closing statements, "
         "in addition to the requested discussion rounds."
