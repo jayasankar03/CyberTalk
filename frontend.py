@@ -15,6 +15,154 @@ st.set_page_config(
     page_icon="🛡️",
     layout="wide",
 )
+# -----------------------------
+# CyberTalk Custom UI Theme
+# -----------------------------
+
+st.markdown(
+    """
+    <style>
+
+    /* Main application background */
+    .stApp {
+        background: linear-gradient(
+            135deg,
+            #071426 0%,
+            #10243d 50%,
+            #091a2e 100%
+        );
+        color: #eaf2ff;
+    }
+
+    /* Main content area */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        max-width: 1400px;
+    }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(
+            180deg,
+            #0b192c,
+            #10243d
+        );
+        border-right: 1px solid #263e5c;
+    }
+
+    /* Headings */
+    h1, h2, h3 {
+        color: #eaf2ff !important;
+        font-weight: 700 !important;
+    }
+
+    /* Paragraphs */
+    p, label, .stMarkdown {
+        color: #d1deef;
+    }
+
+    /* Buttons */
+    .stButton > button,
+    .stFormSubmitButton > button {
+        background: linear-gradient(
+            90deg,
+            #0878d1,
+            #13a5d9
+        );
+        color: white;
+        border: none;
+        border-radius: 9px;
+        font-weight: 600;
+        transition: 0.2s ease;
+    }
+
+    .stButton > button:hover,
+    .stFormSubmitButton > button:hover {
+        background: linear-gradient(
+            90deg,
+            #0965ad,
+            #087fc0
+        );
+        color: white;
+        border: none;
+    }
+
+    /* Input fields */
+    .stTextInput input,
+    .stTextArea textarea {
+        background-color: #142a43;
+        color: white;
+        border: 1px solid #34516f;
+        border-radius: 8px;
+    }
+
+    /* Dividers */
+    hr {
+        border-color: #34516f;
+    }
+
+    /* Expanders */
+    [data-testid="stExpander"] {
+        background-color: #10243b;
+        border: 1px solid #294663;
+        border-radius: 10px;
+    }
+
+    /* Metrics */
+    [data-testid="stMetric"] {
+        background-color: #122a44;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #294663;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+# -----------------------------
+# CyberTalk Brand Logo
+# -----------------------------
+
+
+def render_cybertalk_logo():
+    """Render a professional CyberTalk shield and wordmark."""
+
+    logo_col, title_col = st.columns(
+        [0.7, 7],
+        gap="small",
+        vertical_alignment="center",
+    )
+
+    with logo_col:
+        st.components.v1.html(
+            """
+            <svg width="76" height="84" viewBox="0 0 100 110"
+                 xmlns="http://www.w3.org/2000/svg">
+                <path d="M50 5 L91 22 L85 67 Q76 91 50 104
+                         Q24 91 15 67 L9 22 Z"
+                      fill="#102F4B"
+                      stroke="#19C9F4"
+                      stroke-width="4"/>
+                <path d="M50 16 L79 29 L74 65 Q67 83 50 94
+                         Q33 83 26 65 L21 29 Z"
+                      fill="#0878D1"
+                      fill-opacity="0.35"/>
+                <path d="M32 42 H68 M32 68 H68"
+                      stroke="#16D9F5" stroke-width="2"/>
+                <text x="50" y="62" fill="#FFFFFF"
+                      font-size="25" font-weight="bold"
+                      text-anchor="middle">CT</text>
+            </svg>
+            """,
+            height=120,
+            scrolling=False,
+        )
+
+    with title_col:
+        st.title("CyberTalk")
+
 
 API_URL = os.getenv(
     "CYBERTALK_API_URL",
@@ -250,7 +398,7 @@ if not st.session_state.get("access_token"):
 
     with about_tab:
 
-        st.title("🛡️ CyberTalk")
+        render_cybertalk_logo()
 
         st.subheader("Two Chatbots, One Agreement")
 
@@ -819,7 +967,7 @@ except requests.exceptions.RequestException:
 # Main page heading
 # -----------------------------
 
-st.title("🛡️ CyberTalk")
+render_cybertalk_logo()
 st.subheader("Two Chatbots, One Agreement")
 
 st.write(

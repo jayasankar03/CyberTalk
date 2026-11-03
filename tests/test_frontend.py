@@ -110,7 +110,7 @@ class FrontendTests(unittest.TestCase):
     def test_page_heading_and_custom_persona_guidance(self):
         app = self.run_authenticated_app()
 
-        self.assertEqual(app.title[0].value, "🛡️ CyberTalk")
+        self.assertEqual(app.title[0].value, "CyberTalk")
 
         self.assertTrue(
             any(
