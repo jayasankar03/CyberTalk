@@ -730,372 +730,488 @@ if not st.session_state.get("access_token"):
                     )
 
         st.stop()
+    # -------------------------
+    # About Page and Authentication Modal
+    # -------------------------
+
+    if "show_auth_dialog" not in st.session_state:
+        st.session_state["show_auth_dialog"] = False
+
+    if "auth_modal_view" not in st.session_state:
+        st.session_state["auth_modal_view"] = "signin"
+
+    def open_auth_dialog():
+        st.session_state["show_auth_dialog"] = True
+        st.session_state["auth_modal_view"] = "signin"
+
+    def close_auth_dialog():
+        st.session_state["show_auth_dialog"] = False
+        st.session_state["auth_modal_view"] = "signin"
+
+    def open_forgot_password():
+        st.session_state["auth_modal_view"] = "forgot"
+
+    def open_create_account():
+        st.session_state["auth_modal_view"] = "signup"
+
+    def return_to_sign_in():
+        st.session_state["auth_modal_view"] = "signin"
 
     # -------------------------
-    # Authentication tabs
+    # About CyberTalk Landing Page
     # -------------------------
 
-    about_tab, login_tab, register_tab, forgot_tab = st.tabs(
-        [
-            "About CyberTalk",
-            "Sign In",
-            "Create Account",
-            "Forgot Password",
-        ]
+    st.title("CyberTalk")
+    st.subheader("Two Chatbots, One Agreement")
+
+    st.markdown(
+    """
+    <div style="text-align:center; padding:10px 10px 20px 10px;">
+        <h3>Two Chatbots, One Agreement</h3>
+        <p style="font-size:17px; max-width:750px; margin:auto;">
+            Explore cybersecurity challenges through AI-powered
+            discussions between two stakeholders with different
+            professional perspectives.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+    st.divider()
+
+    st.header("About the Application")
+
+    st.write(
+        """
+        CyberTalk is a Generative AI-powered cybersecurity discussion
+        platform. It brings together two user-defined stakeholders
+        with different professional responsibilities to discuss
+        cybersecurity challenges.
+
+        Each stakeholder contributes their perspective through an
+        AI-generated conversation. At the end, CyberTalk evaluates
+        their discussion and presents the final agreement, unresolved
+        disagreements, shared decisions, and recommended next actions.
+        """
+    )
+
+    st.header("What You Can Do With CyberTalk")
+
+    st.markdown("#### Stakeholder Dialogue")
+    st.write(
+        "Create structured discussions between two stakeholders "
+        "using your own professional roles and responsibilities."
+    )
+
+    st.markdown("#### Cybersecurity Q&A")
+    st.write(
+        "Ask cybersecurity-related questions and receive "
+        "AI-generated explanations and guidance."
+    )
+
+    st.markdown("#### Agreement Evaluation")
+    st.write(
+        "Understand whether the stakeholders reach an agreement, "
+        "partially agree, or disagree."
+    )
+
+    st.markdown("#### Chat History")
+    st.write(
+        "Save, revisit, rename, share, and download your conversations."
+    )
+
+    st.markdown("#### Configurable Discussions")
+    st.write(
+        "Choose between one and five discussion rounds depending "
+        "on the complexity of the topic."
+    )
+
+    st.subheader("Configurable Discussions")
+    st.write(
+        "Choose between one and five discussion rounds depending "
+        "on the complexity of the topic."
+    )
+
+    st.divider()
+
+    st.header("How It Works")
+
+    st.write("1. Enter a cybersecurity discussion topic.")
+    st.write("2. Define two different stakeholder roles.")
+    st.write("3. Select the number of discussion rounds.")
+    st.write("4. Let the AI generate the stakeholder conversation.")
+    st.write("5. Review the final agreement and recommended actions.")
+
+    st.divider()
+
+    st.header("Technology Behind CyberTalk")
+
+    st.write(
+        "Python · FastAPI · Streamlit · Ollama · "
+        "Llama 3.2 · SQLAlchemy · SQLite · Pydantic"
+    )
+
+    st.divider()
+
+    st.markdown(
+        """
+        <div style="text-align:center; padding:25px 10px;">
+            <h2>Ready to Explore CyberTalk?</h2>
+            <p style="font-size:16px;">
+                Sign in or create an account to experience
+                a new way of exploring cybersecurity decisions.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _, button_column, _ = st.columns([1, 2, 1])
+
+    with button_column:
+        st.button(
+            "See What's Inside",
+            key="see_whats_inside_button",
+            type="primary",
+            use_container_width=True,
+            on_click=open_auth_dialog,
+        )
+
+    st.divider()
+
+    st.markdown(
+        """
+        <div style="text-align:center; padding:10px;">
+            <p>CyberTalk — Two Chatbots, One Agreement</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     # -------------------------
-    # About CyberTalk
+    # Centered Authentication Modal
     # -------------------------
 
-    with about_tab:
+    @st.dialog(
+        "Welcome Back",
+        width="small",
+        on_dismiss=close_auth_dialog,
+    )
+    def authentication_dialog():
 
-        render_cybertalk_logo()
+        modal_view = st.session_state["auth_modal_view"]
 
-        st.subheader("Two Chatbots, One Agreement")
+        # -------------------------
+        # Sign In
+        # -------------------------
 
-        st.write(
-            "CyberTalk is a Generative AI application that brings "
-            "two cybersecurity stakeholders together to discuss "
-            "important security topics and reach informed decisions."
-        )
+        if modal_view == "signin":
 
-        st.divider()
-
-        st.header("🎯 Project Objective")
-
-        st.write(
-            "The objective of CyberTalk is to demonstrate how "
-            "Generative AI can facilitate structured cybersecurity "
-            "discussions between professionals with different "
-            "responsibilities and perspectives."
-        )
-
-        st.header("🚀 Key Features")
-
-        feature_col1, feature_col2 = st.columns(2)
-
-        with feature_col1:
-
-            st.markdown("#### 💬 Stakeholder Dialogue")
-
-            st.write(
-                "Create discussions between any two stakeholders "
-                "using custom professional roles."
-            )
-
-            st.markdown("#### 🤖 Cybersecurity Q&A")
-
-            st.write(
-                "Ask cybersecurity-related questions and receive "
-                "AI-generated answers."
-            )
-
-            st.markdown("#### 📚 Chat History")
-
-            st.write(
-                "Save, revisit, and delete your previous conversations."
-            )
-
-        with feature_col2:
-
-            st.markdown("#### ⚖️ Agreement Evaluation")
-
-            st.write(
-                "Evaluate whether stakeholders reach an agreement, "
-                "partially agree, or disagree."
-            )
-
-            st.markdown("#### 🔄 Configurable Discussions")
-
-            st.write(
-                "Choose between one and five discussion rounds."
-            )
-
-            st.markdown("#### 🔐 User Authentication")
-
-            st.write(
-                "Register an account and securely access your "
-                "personal CyberTalk workspace."
-            )
-
-        st.divider()
-
-        st.header("⚙️ How CyberTalk Works")
-
-        st.markdown(
-            """
-            1. Enter a cybersecurity discussion topic.
-            2. Define two different stakeholder roles.
-            3. Select the number of discussion rounds.
-            4. Let the AI generate an alternating discussion.
-            5. Review closing statements and the final agreement.
-            6. Explore shared decisions, disagreements, and next actions.
-            """
-        )
-
-        st.header("🛠️ Technology Stack")
-
-        st.write(
-            "Python · FastAPI · Streamlit · Ollama · "
-            "Llama 3.2 · SQLAlchemy · SQLite · Pydantic"
-        )
-
-        st.divider()
-
-        st.info(
-            "Ready to explore CyberTalk? Select the Sign In tab "
-            "to access your workspace or Create Account to register."
-        )
-
-        st.caption(
-            "CyberTalk — Two Chatbots, One Agreement | "
-            "Generative AI Cybersecurity Project"
-        )
-
-    # -------------------------
-    # Login
-    # -------------------------
-
-    with login_tab:
-
-        st.write(
-            "Sign in to access your CyberTalk workspace."
-        )
-
-        with st.form("login_form"):
+            st.write("Sign in to access your CyberTalk workspace.")
 
             identifier = st.text_input(
                 "Username or Email",
                 max_chars=255,
+                key="modal_login_identifier",
             )
 
             login_password = st.text_input(
                 "Password",
                 type="password",
+                key="modal_login_password",
             )
 
-            login_submitted = st.form_submit_button(
+            _, forgot_column = st.columns([3, 1])
+
+            with forgot_column:
+                st.button(
+                    "Forgot Password?",
+                    key="modal_forgot_password",
+                    type="tertiary",
+                    on_click=open_forgot_password,
+                )
+
+            if st.button(
                 "Sign In",
+                key="modal_sign_in",
                 type="primary",
                 use_container_width=True,
-            )
+            ):
 
-        if login_submitted:
-
-            if not identifier.strip() or not login_password:
-
-                st.error(
-                    "Please enter your username/email and password."
-                )
-
-            else:
-
-                try:
-                    with st.spinner("Signing you in..."):
-
-                        login_response = requests.post(
-                            f"{API_URL}/login",
-                            json={
-                                "identifier": identifier.strip(),
-                                "password": login_password,
-                            },
-                            timeout=30,
-                        )
-
-                    if login_response.ok:
-
-                        login_data = login_response.json()
-
-                        st.session_state["access_token"] = (
-                            login_data["access_token"]
-                        )
-
-                        st.success("Login successful!")
-                        st.rerun()
-
-                    else:
-
-                        st.error(
-                            f"Login failed: "
-                            f"{get_api_error(login_response)}"
-                        )
-
-                except requests.exceptions.RequestException as exc:
+                if not identifier.strip() or not login_password:
 
                     st.error(
-                        f"Could not connect to the API: {exc}"
+                        "Please enter your username/email and password."
                     )
 
-                except (ValueError, KeyError):
+                else:
 
-                    st.error(
-                        "The API returned an invalid login response."
-                    )
+                    try:
+                        with st.spinner("Signing you in..."):
 
-    # -------------------------
-    # Registration
-    # -------------------------
-
-    with register_tab:
-
-        st.write("Create a new CyberTalk account.")
-
-        with st.form("registration_form"):
-
-            new_username = st.text_input(
-                "Username",
-                max_chars=50,
-            )
-
-            new_email = st.text_input(
-                "Email",
-                max_chars=255,
-            )
-
-            new_password = st.text_input(
-                "Password",
-                type="password",
-            )
-
-            confirm_password = st.text_input(
-                "Confirm Password",
-                type="password",
-            )
-
-            register_submitted = st.form_submit_button(
-                "Create Account",
-                use_container_width=True,
-            )
-
-        if register_submitted:
-
-            if not all([
-                new_username.strip(),
-                new_email.strip(),
-                new_password,
-                confirm_password,
-            ]):
-
-                st.error(
-                    "Please complete all registration fields."
-                )
-
-            elif new_password != confirm_password:
-
-                st.error("Passwords do not match.")
-
-            else:
-
-                try:
-                    with st.spinner("Creating your account..."):
-
-                        register_response = requests.post(
-                            f"{API_URL}/register",
-                            json={
-                                "username": new_username.strip(),
-                                "email": new_email.strip(),
-                                "password": new_password,
-                            },
-                            timeout=30,
-                        )
-
-                    if register_response.status_code == 201:
-
-                        st.success(
-                            "Account created successfully! "
-                            "Please sign in using the Sign In tab."
-                        )
-
-                    else:
-
-                        st.error(
-                            "Registration failed: "
-                            f"{get_api_error(register_response)}"
-                        )
-
-                except requests.exceptions.RequestException as exc:
-
-                    st.error(
-                        f"Could not connect to the API: {exc}"
-                    )
-
-                except ValueError:
-
-                    st.error(
-                        "The API returned an invalid response."
-                    )
-
-    # -------------------------
-    # Forgot Password
-    # -------------------------
-
-    with forgot_tab:
-
-        st.write(
-            "Enter your registered email address. "
-            "We'll send you a password-reset link."
-        )
-
-        with st.form("password_reset_request_form"):
-
-            reset_email = st.text_input(
-                "Registered Email",
-                max_chars=255,
-            )
-
-            request_reset_submitted = st.form_submit_button(
-                "Send Reset Link",
-                type="primary",
-                use_container_width=True,
-            )
-
-        if request_reset_submitted:
-
-            if not reset_email.strip():
-
-                st.error(
-                    "Please enter your registered email address."
-                )
-
-            else:
-
-                try:
-                    with st.spinner("Sending password-reset email..."):
-
-                        request_reset_response = requests.post(
-                            f"{API_URL}/password-reset/request",
-                            json={
-                                "email": reset_email.strip()
-                            },
-                            timeout=30,
-                        )
-
-                    if request_reset_response.ok:
-
-                        st.success(
-                            request_reset_response.json().get(
-                                "message",
-                                "If an account exists for that email, "
-                                "a password-reset link has been sent."
+                            login_response = requests.post(
+                                f"{API_URL}/login",
+                                json={
+                                    "identifier": identifier.strip(),
+                                    "password": login_password,
+                                },
+                                timeout=30,
                             )
-                        )
 
-                    else:
+                        if login_response.ok:
+
+                            login_data = login_response.json()
+
+                            st.session_state["access_token"] = (
+                                login_data["access_token"]
+                            )
+
+                            st.session_state["show_auth_dialog"] = False
+
+                            st.success("Login successful!")
+                            st.rerun()
+
+                        else:
+
+                            st.error(
+                                "Login failed: "
+                                f"{get_api_error(login_response)}"
+                            )
+
+                    except requests.exceptions.RequestException as exc:
 
                         st.error(
-                            "Could not process the request: "
-                            f"{get_api_error(request_reset_response)}"
+                            f"Could not connect to the API: {exc}"
                         )
 
-                except requests.exceptions.RequestException as exc:
+                    except (ValueError, KeyError):
+
+                        st.error(
+                            "The API returned an invalid login response."
+                        )
+
+            st.divider()
+
+            st.caption("Don't have an account yet?")
+
+            if st.button(
+                "Sign Up",
+                key="modal_open_signup",
+                use_container_width=True,
+                type="secondary",
+            ):
+                st.session_state["auth_modal_view"] = "signup"
+                st.rerun()
+
+        # -------------------------
+        # Forgot Password
+        # -------------------------
+
+        elif modal_view == "forgot":
+
+            st.subheader("Reset Your Password")
+
+            st.write(
+                "Enter your registered email address. "
+                "We'll send you a password-reset link."
+            )
+
+            with st.form("modal_password_reset_form"):
+
+                reset_email = st.text_input(
+                    "Registered Email",
+                    max_chars=255,
+                )
+
+                reset_submitted = st.form_submit_button(
+                    "Send Reset Link",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            if reset_submitted:
+
+                if not reset_email.strip():
 
                     st.error(
-                        f"Could not connect to the API: {exc}"
+                        "Please enter your registered email address."
                     )
+
+                else:
+
+                    try:
+                        with st.spinner(
+                            "Sending password-reset email..."
+                        ):
+
+                            reset_response = requests.post(
+                                f"{API_URL}/password-reset/request",
+                                json={
+                                    "email": reset_email.strip()
+                                },
+                                timeout=30,
+                            )
+
+                        if reset_response.ok:
+
+                            st.success(
+                                reset_response.json().get(
+                                    "message",
+                                    "If an account exists for that email, "
+                                    "a password-reset link has been sent."
+                                )
+                            )
+
+                        else:
+
+                            st.error(
+                                "Could not process the request: "
+                                f"{get_api_error(reset_response)}"
+                            )
+
+                    except requests.exceptions.RequestException as exc:
+
+                        st.error(
+                            f"Could not connect to the API: {exc}"
+                        )
+
+            st.button(
+                "Back to Sign In",
+                key="modal_back_from_forgot",
+                use_container_width=True,
+                on_click=return_to_sign_in,
+            )
+
+        # -------------------------
+        # Create Account
+        # -------------------------
+
+        elif modal_view == "signup":
+
+            st.subheader("Create Your Account")
+
+            st.write(
+                "Register to start exploring cybersecurity "
+                "discussions with CyberTalk."
+            )
+
+            with st.form("modal_registration_form"):
+
+                register_username = st.text_input(
+                    "Username",
+                    max_chars=50,
+                )
+
+                register_email = st.text_input(
+                    "Email Address",
+                    max_chars=255,
+                )
+
+                register_password = st.text_input(
+                    "Password",
+                    type="password",
+                    max_chars=128,
+                )
+
+                confirm_password = st.text_input(
+                    "Confirm Password",
+                    type="password",
+                    max_chars=128,
+                )
+
+                register_submitted = st.form_submit_button(
+                    "Create Account",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            if register_submitted:
+
+                if not register_username.strip():
+                    st.error("Please enter a username.")
+
+                elif len(register_username.strip()) < 3:
+                    st.error(
+                        "Username must contain at least 3 characters."
+                    )
+
+                elif not register_email.strip():
+                    st.error("Please enter your email address.")
+
+                elif len(register_email.strip()) < 5:
+                    st.error("Please enter a valid email address.")
+
+                elif not register_password:
+                    st.error("Please enter a password.")
+
+                elif len(register_password) < 8:
+                    st.error(
+                        "Password must contain at least 8 characters."
+                    )
+
+                elif len(register_password) > 128:
+                    st.error(
+                        "Password cannot exceed 128 characters."
+                    )
+
+                elif register_password != confirm_password:
+                    st.error("The passwords do not match.")
+
+                else:
+
+                    try:
+                        with st.spinner("Creating your account..."):
+
+                            register_response = requests.post(
+                                f"{API_URL}/register",
+                                json={
+                                    "username": register_username.strip(),
+                                    "email": register_email.strip().lower(),
+                                    "password": register_password,
+                                },
+                                timeout=30,
+                            )
+
+                        if register_response.status_code == 201:
+
+                            st.success(
+                                "Account created successfully! "
+                                "You can now sign in."
+                            )
+
+                            st.session_state["auth_modal_view"] = "signin"
+                            st.rerun()
+
+                        else:
+
+                            st.error(
+                                "Registration failed: "
+                                f"{get_api_error(register_response)}"
+                            )
+
+                    except requests.exceptions.RequestException as exc:
+
+                        st.error(
+                            f"Could not connect to the API: {exc}"
+                        )
+
+            st.button(
+                "Back to Sign In",
+                key="modal_back_from_signup",
+                use_container_width=True,
+                on_click=return_to_sign_in,
+            )
+
+    if st.session_state["show_auth_dialog"]:
+        authentication_dialog()
 
     st.stop()
 
+# Ensure a valid user profile exists before showing authenticated content.
+if not isinstance(current_user, dict):
+    st.session_state["access_token"] = None
+    st.stop()
 
 
 # -----------------------------
