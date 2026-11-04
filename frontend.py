@@ -349,6 +349,32 @@ def rename_chat_history(history_id, new_title):
         timeout=15,
     )
 
+def create_share_link(history_id, expires_in_days=None):
+    """Create a shareable link for an owned conversation."""
+
+    payload = {}
+
+    if expires_in_days is not None:
+        payload["expires_in_days"] = expires_in_days
+
+    return requests.post(
+        f"{API_URL}/history/{history_id}/share",
+        headers=get_auth_headers(),
+        json=payload,
+        timeout=15,
+    )
+
+
+def revoke_share_link(history_id, share_id):
+    """Revoke a shareable link for an owned conversation."""
+
+    return requests.delete(
+        f"{API_URL}/history/{history_id}/share/{share_id}",
+        headers=get_auth_headers(),
+        timeout=15,
+    )
+
+
 # -----------------------------
 # Verify current user session
 # -----------------------------
@@ -1395,17 +1421,109 @@ try:
 
                         st.divider()
 
-                        st.divider()
-
                         st.caption("Share or export conversation")
 
-                        st.button(
-                            "🔗 Copy Shareable Link",
-                            key=f"share_link_{history_id}",
-                            disabled=True,
-                            use_container_width=True,
-                            help="Shareable links will be available soon.",
-                        )
+                        share_state_key = f"share_link_data_{history_id}"
+                        revoked_state_key = f"share_revoked_{history_id}"
+
+                        if st.session_state.pop(revoked_state_key, False):
+                            st.sidebar.success("Share link revoked successfully.")
+
+                        with st.form(key=f"share_form_{history_id}"):
+                            expiry_label = st.selectbox(
+                                "Link expiration",
+                                options=[
+                                    "Never",
+                                    "1 day",
+                                    "7 days",
+                                    "30 days",
+                                    "90 days",
+                                    "365 days",
+                                ],
+                                key=f"share_expiry_{history_id}",
+                            )
+
+                            generate_share = st.form_submit_button(
+                                "Generate Shareable Link",
+                                use_container_width=True,
+                                disabled=bool(st.session_state.get(share_state_key)),
+                            )
+
+                        if generate_share:
+                            expiry_days = {
+                                "Never": None,
+                                "1 day": 1,
+                                "7 days": 7,
+                                "30 days": 30,
+                                "90 days": 90,
+                                "365 days": 365,
+                            }
+
+                            try:
+                                share_response = create_share_link(
+                                    history_id,
+                                    expiry_days[expiry_label],
+                                )
+
+                                if share_response.ok:
+                                    st.session_state[share_state_key] = (
+                                        share_response.json()
+                                    )
+                                    st.rerun()
+
+                                else:
+                                    st.sidebar.error(
+                                        "Could not create share link: "
+                                        f"{get_api_error(share_response)}"
+                                    )
+
+                            except requests.exceptions.RequestException:
+                                st.sidebar.error(
+                                    "Could not connect to the API."
+                                )
+
+                        share_data = st.session_state.get(share_state_key)
+
+                        if share_data:
+                            st.caption("Your read-only sharing link")
+
+                            # Streamlit code blocks provide a copy-to-clipboard control.
+                            st.code(share_data["share_url"])
+
+                            if share_data.get("expires_at"):
+                                st.caption(
+                                    f"Expires: {share_data['expires_at']}"
+                                )
+                            else:
+                                st.caption("This link does not expire.")
+
+                            if st.button(
+                                "Revoke Share Link",
+                                key=f"revoke_share_{history_id}",
+                                use_container_width=True,
+                                type="secondary",
+                            ):
+                                try:
+                                    revoke_response = revoke_share_link(
+                                        history_id,
+                                        share_data["share_id"],
+                                    )
+
+                                    if revoke_response.ok:
+                                        st.session_state.pop(share_state_key, None)
+                                        st.session_state[revoked_state_key] = True
+                                        st.rerun()
+
+                                    else:
+                                        st.sidebar.error(
+                                            "Could not revoke share link: "
+                                            f"{get_api_error(revoke_response)}"
+                                        )
+
+                                except requests.exceptions.RequestException:
+                                    st.sidebar.error(
+                                        "Could not connect to the API."
+                                    )
 
                         st.button(
                             "📥 Download Conversation",
@@ -1414,14 +1532,16 @@ try:
                             use_container_width=True,
                             help="Conversation downloads will be available soon.",
                         )
-
                         if st.button(
                             "Delete",
-                            key=f"request_delete_history_{history_id}",
+                            key=f"delete_history_{history_id}",
                             use_container_width=True,
+                            type="secondary",
                         ):
-                            st.session_state[menu_key] = False
-                            show_delete_confirmation(history_id, title)
+                            show_delete_confirmation(
+                                history_id,
+                                title,
+                            )
 
     else:
         st.sidebar.warning(

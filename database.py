@@ -52,5 +52,6 @@ def create_db_tables():
     import user_model
     import chat_history_model
     import password_reset_model
+    import share_link_model
 
     Base.metadata.create_all(bind=engine)

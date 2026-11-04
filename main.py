@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 import logging
 import time
 import httpx
@@ -22,11 +24,19 @@ from pydantic import (
     field_validator,
     ConfigDict,
 )
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Depends,
+    Request,
+    status,
+)
 
 from auth import create_access_token, decode_access_token
 from database import get_db, create_db_tables
 from user_model import User
 from chat_history_model import ChatHistory
+from share_link_model import ShareLink
 from security import (
     hash_password,
     verify_password,
@@ -43,6 +53,7 @@ from qa_service import (
     OllamaResponseError,
     answer_cybersecurity_question,
 )
+
 app = FastAPI(title="CyberTalk API")
 
 logging.basicConfig(
@@ -223,6 +234,27 @@ class ChatHistoryResponse(BaseModel):
     title: str
     content: str
     created_at: datetime
+
+class ShareLinkCreateRequest(BaseModel):
+    expires_in_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=365,
+    )
+
+
+class ShareLinkCreateResponse(BaseModel):
+    share_id: int
+    share_url: str
+    expires_at: datetime | None
+
+
+class SharedConversationResponse(BaseModel):
+    conversation_type: str
+    title: str
+    content: str
+    created_at: datetime
+
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
@@ -1194,4 +1226,190 @@ def delete_all_chat_history(
     return {
         "message": "All conversations deleted successfully.",
         "deleted_count": deleted_count,
+    }
+# ==========================================
+# SECURE CONVERSATION SHARING API
+# ==========================================
+
+@app.post(
+    "/history/{history_id}/share",
+    response_model=ShareLinkCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_share_link(
+    history_id: int,
+    request: ShareLinkCreateRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a secure read-only sharing link for an owned conversation."""
+
+    history = (
+        db.query(ChatHistory)
+        .filter(
+            ChatHistory.id == history_id,
+            ChatHistory.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if history is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found.",
+        )
+
+    # Generate a cryptographically secure, unpredictable token.
+    raw_token = secrets.token_urlsafe(32)
+
+    # Store only the SHA-256 hash of the token.
+    token_hash = hashlib.sha256(
+        raw_token.encode("utf-8")
+    ).hexdigest()
+
+    expires_at = None
+
+    if request.expires_in_days is not None:
+        expires_at = (
+            datetime.now(timezone.utc)
+            + timedelta(days=request.expires_in_days)
+        )
+
+    share_link = ShareLink(
+        history_id=history.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        is_revoked=False,
+    )
+
+    db.add(share_link)
+    db.commit()
+    db.refresh(share_link)
+
+    share_url = (
+        str(http_request.base_url).rstrip("/")
+        + f"/shared/{raw_token}"
+    )
+
+    return ShareLinkCreateResponse(
+        share_id=share_link.id,
+        share_url=share_url,
+        expires_at=share_link.expires_at,
+    )
+
+
+@app.get(
+    "/shared/{token}",
+    response_model=SharedConversationResponse,
+)
+def view_shared_conversation(
+    token: str,
+    db: Session = Depends(get_db),
+):
+    """Public read-only access to a shared conversation."""
+
+    token_hash = hashlib.sha256(
+        token.encode("utf-8")
+    ).hexdigest()
+
+    share_link = (
+        db.query(ShareLink)
+        .filter(ShareLink.token_hash == token_hash)
+        .first()
+    )
+
+    if share_link is None or share_link.is_revoked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This share link is invalid or unavailable.",
+        )
+
+    if share_link.expires_at is not None:
+        expiry = share_link.expires_at
+
+        # SQLite may return a timezone-naive datetime.
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+
+        if datetime.now(timezone.utc) >= expiry:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="This share link has expired.",
+            )
+
+    history = (
+        db.query(ChatHistory)
+        .filter(ChatHistory.id == share_link.history_id)
+        .first()
+    )
+
+    if history is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The shared conversation is no longer available.",
+        )
+
+    # Deliberately return no owner or account information.
+    return SharedConversationResponse(
+        conversation_type=history.conversation_type,
+        title=history.title,
+        content=history.content,
+        created_at=history.created_at,
+    )
+
+
+@app.delete(
+    "/history/{history_id}/share/{share_id}",
+)
+def revoke_share_link(
+    history_id: int,
+    share_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Revoke a share link belonging to an owned conversation."""
+
+    history = (
+        db.query(ChatHistory)
+        .filter(
+            ChatHistory.id == history_id,
+            ChatHistory.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if history is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found.",
+        )
+
+    share_link = (
+        db.query(ShareLink)
+        .filter(
+            ShareLink.id == share_id,
+            ShareLink.history_id == history.id,
+        )
+        .first()
+    )
+
+    if share_link is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Share link not found.",
+        )
+
+    if share_link.is_revoked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Share link is already unavailable.",
+        )
+
+    share_link.is_revoked = True
+
+    db.commit()
+
+    return {
+        "message": "Share link revoked successfully."
     }
