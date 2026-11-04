@@ -142,3 +142,144 @@ def test_get_my_profile_for_nonexistent_user():
     )
 
     assert response.status_code == 401
+def get_profile_token(user):
+    return create_access_token(
+        data={"sub": str(user["id"]), "role": user["role"]}
+    )
+
+
+def test_update_my_profile_success():
+    user = create_test_user()
+    token = get_profile_token(user)
+
+    response = client.put(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "username": "updateduser",
+            "email": "updated@example.com",
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["username"] == "updateduser"
+    assert data["email"] == "updated@example.com"
+    assert "hashed_password" not in data
+
+
+def test_update_my_profile_normalizes_input():
+    user = create_test_user()
+    token = get_profile_token(user)
+
+    response = client.put(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "username": "  updateduser  ",
+            "email": "  UPDATED@EXAMPLE.COM  ",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "updateduser"
+    assert response.json()["email"] == "updated@example.com"
+
+
+def test_update_my_profile_duplicate_username():
+    user = create_test_user()
+
+    client.post(
+        "/register",
+        json={
+            "username": "anotheruser",
+            "email": "another@example.com",
+            "password": "SecurePass123",
+        },
+    )
+
+    token = get_profile_token(user)
+
+    response = client.put(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "username": "anotheruser",
+            "email": "updated@example.com",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Username is already registered."
+
+
+def test_update_my_profile_duplicate_email():
+    user = create_test_user()
+
+    client.post(
+        "/register",
+        json={
+            "username": "anotheruser",
+            "email": "another@example.com",
+            "password": "SecurePass123",
+        },
+    )
+
+    token = get_profile_token(user)
+
+    response = client.put(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "username": "updateduser",
+            "email": "another@example.com",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Email is already registered."
+
+
+def test_update_my_profile_without_token():
+    response = client.put(
+        "/users/me",
+        json={
+            "username": "updateduser",
+            "email": "updated@example.com",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_update_my_profile_invalid_username():
+    user = create_test_user()
+    token = get_profile_token(user)
+
+    response = client.put(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "username": "ab",
+            "email": "updated@example.com",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_my_profile_invalid_email():
+    user = create_test_user()
+    token = get_profile_token(user)
+
+    response = client.put(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "username": "updateduser",
+            "email": "invalid-email",
+        },
+    )
+
+    assert response.status_code == 422

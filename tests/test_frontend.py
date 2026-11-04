@@ -594,5 +594,106 @@ class FrontendTests(unittest.TestCase):
             "Bearer test-access-token"
         )
 
+    def open_profile_page(self):
+        app = self.run_authenticated_app()
+
+        profile_button = next(
+            button
+            for button in app.button
+            if button.label == "👤"
+        )
+
+        profile_button.click().run(timeout=10)
+
+        return app
+
+    @patch("requests.put")
+    def test_profile_update_success(self, mock_put):
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.ok = True
+        mock_put.return_value = mock_response
+
+        app = self.open_profile_page()
+
+        self.assertTrue(
+            any(
+                element.value == "Edit Profile"
+                for element in app.subheader
+            )
+        )
+
+        app.text_input[0].set_value("updateduser")
+        app.text_input[1].set_value("updated@example.com")
+
+        next(
+            button
+            for button in app.button
+            if button.label == "Save Changes"
+        ).click().run(timeout=10)
+
+        mock_put.assert_called_once()
+
+        self.assertEqual(
+            mock_put.call_args.kwargs["json"],
+            {
+                "username": "updateduser",
+                "email": "updated@example.com",
+            },
+        )
+
+    @patch("requests.put")
+    def test_profile_update_api_error(self, mock_put):
+        mock_response = Mock()
+        mock_response.status_code = 409
+        mock_response.text = "Conflict"
+        mock_response.json.return_value = {
+            "detail": "Username is already registered."
+        }
+        mock_put.return_value = mock_response
+
+        app = self.open_profile_page()
+
+        app.text_input[0].set_value("updateduser")
+        app.text_input[1].set_value("updated@example.com")
+
+        next(
+            button
+            for button in app.button
+            if button.label == "Save Changes"
+        ).click().run(timeout=10)
+
+        self.assertTrue(
+            any(
+                "Username is already registered."
+                in element.value
+                for element in app.error
+            )
+        )
+
+    @patch("requests.put")
+    def test_profile_update_connection_error(self, mock_put):
+        import requests
+
+        mock_put.side_effect = requests.ConnectionError()
+
+        app = self.open_profile_page()
+
+        app.text_input[0].set_value("updateduser")
+        app.text_input[1].set_value("updated@example.com")
+
+        next(
+            button
+            for button in app.button
+            if button.label == "Save Changes"
+        ).click().run(timeout=10)
+
+        self.assertTrue(
+            any(
+                "Unable to update your profile."
+                in element.value
+                for element in app.error
+            )
+        )
 if __name__ == "__main__":
     unittest.main()

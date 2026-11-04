@@ -802,7 +802,81 @@ if st.session_state["show_profile"]:
     )
 
     st.divider()
+    st.subheader("Edit Profile")
 
+    with st.form("update_profile_form"):
+
+        updated_username = st.text_input(
+            "Username",
+            value=current_user.get("username", ""),
+            max_chars=50,
+        )
+
+        updated_email = st.text_input(
+            "Email Address",
+            value=current_user.get("email", ""),
+            max_chars=255,
+        )
+
+        save_profile = st.form_submit_button(
+            "Save Changes",
+            use_container_width=True,
+        )
+
+        if save_profile:
+            username = updated_username.strip()
+            email = updated_email.strip().lower()
+
+            if len(username) < 3:
+                st.error("Username must contain at least 3 characters.")
+
+            elif (
+                "@" not in email
+                or "." not in email.split("@")[-1]
+            ):
+                st.error("Please provide a valid email address.")
+
+            elif (
+                username == current_user.get("username")
+                and email == current_user.get("email", "").lower()
+            ):
+                st.info("No profile changes were made.")
+
+            else:
+                try:
+                    update_response = requests.put(
+                        f"{API_URL}/users/me",
+                        headers=get_auth_headers(),
+                        json={
+                            "username": username,
+                            "email": email,
+                        },
+                        timeout=15,
+                    )
+
+                    if update_response.status_code == 200:
+                        st.success(
+                            "Your profile was updated successfully."
+                        )
+                        st.rerun()
+
+                    elif update_response.status_code == 401:
+                        st.error(
+                            "Your session has expired. Please log in again."
+                        )
+                        st.session_state["access_token"] = None
+                        st.rerun()
+
+                    else:
+                        st.error(get_api_error(update_response))
+
+                except requests.RequestException:
+                    st.error(
+                        "Unable to update your profile. "
+                        "Please check your connection and try again."
+                    )
+
+    st.divider()
     st.subheader("Account Information")
 
     profile_col1, profile_col2 = st.columns(2)

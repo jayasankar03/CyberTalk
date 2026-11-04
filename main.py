@@ -147,6 +147,29 @@ class UserProfileResponse(BaseModel):
     created_at: datetime
 # JWT bearer authentication
 security = HTTPBearer(auto_error=False)
+class UserProfileUpdateRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=50)
+    email: str = Field(min_length=5, max_length=255)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Username cannot be empty.")
+
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def validate_profile_email(cls, value: str) -> str:
+        value = value.strip().lower()
+
+        if "@" not in value or "." not in value.split("@")[-1]:
+            raise ValueError("Please provide a valid email address.")
+
+        return value
 class ChatHistoryCreateRequest(BaseModel):
     conversation_type: Literal["qa", "dialogue"]
     title: str = Field(min_length=1, max_length=500)
@@ -169,7 +192,6 @@ class ChatHistoryCreateRequest(BaseModel):
             raise ValueError("Conversation content cannot be empty.")
 
         return value
-
 
 class ChatHistoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -524,6 +546,64 @@ def confirm_password_reset(
 def get_my_profile(
     current_user: User = Depends(get_current_user),
 ):
+    return current_user
+@app.put(
+    "/users/me",
+    response_model=UserProfileResponse,
+)
+def update_my_profile(
+    request: UserProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Check whether another account uses the requested username.
+    existing_username = (
+        db.query(User)
+        .filter(
+            User.username == request.username,
+            User.id != current_user.id,
+        )
+        .first()
+    )
+
+    if existing_username:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username is already registered.",
+        )
+
+    # Check whether another account uses the requested email.
+    existing_email = (
+        db.query(User)
+        .filter(
+            User.email == request.email,
+            User.id != current_user.id,
+        )
+        .first()
+    )
+
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already registered.",
+        )
+
+    # Update only the permitted profile fields.
+    current_user.username = request.username
+    current_user.email = request.email
+
+    try:
+        db.commit()
+        db.refresh(current_user)
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to update user profile.")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to update profile. Please try again.",
+        )
+
     return current_user
 @app.get("/")
 async def root():
