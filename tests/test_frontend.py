@@ -535,7 +535,13 @@ class FrontendTests(unittest.TestCase):
             history_records=history_records,
             history_detail=history_detail,
         )
-
+        # Expand the conversation details.
+        title_button = next(
+            button
+            for button in app.button
+            if button.label == "How does MFA work?"
+        )
+        title_button.click().run(timeout=10)
         open_button = next(
             button
             for button in app.button
@@ -566,20 +572,46 @@ class FrontendTests(unittest.TestCase):
         delete_response = Mock()
         delete_response.ok = True
         delete_response.status_code = 204
-
         mock_delete.return_value = delete_response
 
         app = self.run_authenticated_app(
             history_records=history_records
         )
 
+        # Open the three-dot menu.
+        menu_button = next(
+            button
+            for button in app.button
+            if button.label == "⋮"
+        )
+        menu_button.click().run(timeout=10)
+
+        # Select Delete from the opened menu.
         delete_button = next(
             button
             for button in app.button
-            if button.label == "Delete Conversation"
+            if button.label == "Delete"
+        )
+        delete_button.click().run(timeout=10)
+
+        # Verify confirmation is required.
+        mock_delete.assert_not_called()
+
+        self.assertTrue(
+            any(
+                "permanently delete" in element.value.lower()
+                for element in app.markdown
+            ),
+            "Delete confirmation dialog should display its warning message.",
         )
 
-        delete_button.click().run(timeout=10)
+        # Confirm deletion using the dialog's specific button.
+        confirm_button = next(
+            button
+            for button in app.button
+            if button.key == "confirm_delete_1"
+        )
+        confirm_button.click().run(timeout=10)
 
         mock_delete.assert_called_once()
 

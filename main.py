@@ -202,6 +202,19 @@ class ChatHistoryCreateRequest(BaseModel):
 
         return value
 
+class ChatHistoryRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Conversation title cannot be empty.")
+
+        return value
+
 class ChatHistoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -1098,6 +1111,39 @@ def get_single_chat_history(
 
     return history
 
+@app.put(
+    "/history/{history_id}",
+    response_model=ChatHistoryResponse,
+)
+def rename_chat_history(
+    history_id: int,
+    request: ChatHistoryRenameRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Rename one conversation owned by the authenticated user."""
+
+    history = (
+        db.query(ChatHistory)
+        .filter(
+            ChatHistory.id == history_id,
+            ChatHistory.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if history is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found.",
+        )
+
+    history.title = request.title
+
+    db.commit()
+    db.refresh(history)
+
+    return history
 
 @app.delete("/history/{history_id}")
 def delete_chat_history(

@@ -1,10 +1,14 @@
 
+from http import client
 import unittest
 
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
+from websockets import client
 
+from tests.test_chat_history_api import auth_headers, create_test_user
+from tests.test_chat_history_api import auth_headers
 from database import Base
 from user_model import User
 from chat_history_model import ChatHistory
@@ -158,7 +162,6 @@ class ChatHistoryModelTests(unittest.TestCase):
             self.session.commit()
 
         self.session.rollback()
-
 
 if __name__ == "__main__":
     unittest.main()

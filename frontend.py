@@ -116,7 +116,35 @@ st.markdown(
         border-radius: 10px;
         border: 1px solid #294663;
     }
+    /* Minimal three-dot conversation menu button */
+    [class*="st-key-history_menu_icon_wrapper_"] .stButton > button {
+        background: transparent !important;
+        background-image: none !important;
+        color: #d1deef !important;
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: 8px !important;
+        min-height: 40px !important;
+        height: 40px !important;
+        padding: 0 !important;
+        font-size: 25px !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+    }
 
+    [class*="st-key-history_menu_icon_wrapper_"] .stButton > button:hover {
+        background: #203b58 !important;
+        color: #19c9f4 !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    /* Centered delete confirmation dialog */
+    [data-testid="stDialog"] {
+        background: #10243d;
+        border: 1px solid #34516f;
+        border-radius: 14px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -240,6 +268,15 @@ def delete_chat_history(history_id):
         timeout=15,
     )
 
+def rename_chat_history(history_id, new_title):
+    """Rename one conversation belonging to the current user."""
+
+    return requests.put(
+        f"{API_URL}/history/{history_id}",
+        headers=get_auth_headers(),
+        json={"title": new_title},
+        timeout=15,
+    )
 
 # -----------------------------
 # Verify current user session
@@ -771,8 +808,8 @@ with profile_column:
 
     if st.button(
         "👤",
-        help="Open My Profile",
-        key="profile_icon_button",
+        key="profile_menu_button",
+        help="My Profile",
         use_container_width=True,
     ):
 
@@ -1005,6 +1042,65 @@ if st.session_state["show_profile"]:
         st.rerun()
 
     st.stop()
+@st.dialog("Delete conversation?")
+def confirm_delete_conversation(history_id):
+    """Delete a conversation after explicit user confirmation."""
+
+    try:
+        response = delete_chat_history(history_id)
+
+        if response.ok:
+            st.session_state[f"delete_success_{history_id}"] = True
+        else:
+            st.session_state[f"delete_error_{history_id}"] = (
+                get_api_error(response)
+            )
+
+    except requests.exceptions.RequestException:
+        st.session_state[f"delete_error_{history_id}"] = (
+            "Could not connect to the API."
+        )
+
+
+@st.dialog("Delete conversation?")
+def show_delete_confirmation(history_id, title):
+    st.write(
+        f'Are you sure you want to permanently delete "{title}"?'
+    )
+    st.caption("This action cannot be undone.")
+
+    success_key = f"delete_success_{history_id}"
+    error_key = f"delete_error_{history_id}"
+
+    if st.session_state.get(success_key):
+        st.session_state.pop(success_key, None)
+        st.rerun()
+
+    if st.session_state.get(error_key):
+        st.error(st.session_state.pop(error_key))
+
+    confirm_col, cancel_col = st.columns(2)
+
+    with confirm_col:
+        if st.button(
+            "Delete",
+            key=f"confirm_delete_{history_id}",
+            type="primary",
+            use_container_width=True,
+            on_click=confirm_delete_conversation,
+            args=(history_id,),
+        ):
+            if st.session_state.get(success_key):
+                st.session_state.pop(success_key, None)
+                st.rerun()
+
+    with cancel_col:
+        if st.button(
+            "Cancel",
+            key=f"cancel_delete_{history_id}",
+            use_container_width=True,
+        ):
+            st.rerun()
 
 # -----------------------------
 # Chat History Sidebar
@@ -1014,180 +1110,229 @@ st.sidebar.divider()
 st.sidebar.subheader("📚 My Chat History")
 
 try:
-
     history_response = fetch_chat_history()
 
     if history_response.status_code == 401:
-
         st.sidebar.warning(
             "Your session has expired. Please log in again."
         )
 
     elif history_response.ok:
-
         history_records = history_response.json()
 
         if not isinstance(history_records, list):
-
             st.sidebar.warning(
                 "The API returned an invalid history response."
             )
 
         elif not history_records:
-
             st.sidebar.caption(
                 "No saved conversations yet."
             )
 
         else:
-
             st.sidebar.caption(
                 f"{len(history_records)} saved conversation(s)"
             )
 
             for record in history_records:
-
                 history_id = record["id"]
                 conversation_type = record["conversation_type"]
                 title = record["title"]
 
-                with st.sidebar.expander(
-                    title,
-                    expanded=False,
-                ):
+                menu_key = f"show_history_menu_{history_id}"
+                details_key = f"show_history_details_{history_id}"
+                confirm_delete_key = (
+                    f"confirm_delete_history_{history_id}"
+                )
 
-                    st.caption(
-                        f"Type: {conversation_type.upper()}"
-                    )
+                # Conversation title and three-dot menu.
+                title_col, menu_col = st.sidebar.columns(
+                    [0.88, 0.12]
+                )
 
-                    st.caption(
-                        f"Saved: {record['created_at']}"
-                    )
-
-                    # Open saved conversation.
+                with title_col:
                     if st.button(
-                        "Open Conversation",
-                        key=f"open_history_{history_id}",
+                        title,
+                        key=f"history_title_{history_id}",
                         use_container_width=True,
                     ):
+                        st.session_state[details_key] = not (
+                            st.session_state.get(details_key, False)
+                        )
+                        st.rerun()
 
-                        try:
-
-                            detail_response = (
-                                fetch_single_chat_history(history_id)
-                            )
-
-                            if detail_response.ok:
-
-                                saved_record = detail_response.json()
-
-                                saved_content = json.loads(
-                                    saved_record["content"]
-                                )
-
-                                if (
-                                    saved_record["conversation_type"]
-                                    == "qa"
-                                ):
-
-                                    if not isinstance(
-                                        saved_content, dict
-                                    ):
-                                        raise ValueError(
-                                            "Invalid saved Q&A data."
-                                        )
-
-                                    st.session_state["qa_result"] = (
-                                        saved_content
-                                    )
-
-                                    st.session_state.pop(
-                                        "cybertalk_result",
-                                        None,
-                                    )
-
-                                elif (
-                                    saved_record["conversation_type"]
-                                    == "dialogue"
-                                ):
-
-                                    if not isinstance(
-                                        saved_content, dict
-                                    ):
-                                        raise ValueError(
-                                            "Invalid saved dialogue data."
-                                        )
-
-                                    st.session_state[
-                                        "cybertalk_result"
-                                    ] = saved_content
-
-                                    st.session_state.pop(
-                                        "qa_result",
-                                        None,
-                                    )
-
-                                st.rerun()
-
-                            else:
-
-                                st.sidebar.error(
-                                    "Could not open this conversation: "
-                                    f"{get_api_error(detail_response)}"
-                                )
-
-                        except (
-                            requests.exceptions.RequestException,
-                            ValueError,
-                            KeyError,
+                with menu_col:
+                    with st.container(
+                        key=f"history_menu_icon_wrapper_{history_id}"
+                    ):
+                        if st.button(
+                            "⋮",
+                            key=f"history_menu_button_{history_id}",
+                            help="Conversation actions",
+                            use_container_width=True,
                         ):
-
-                            st.sidebar.error(
-                                "Could not load the saved conversation."
+                            st.session_state[menu_key] = not (
+                                st.session_state.get(menu_key, False)
                             )
+                            st.rerun()
+                # Expanded conversation details.
+                if st.session_state.get(details_key, False):
+                    with st.sidebar.container():
+                        st.caption(
+                            f"Type: {conversation_type.upper()}"
+                        )
+                        st.caption(
+                            f"Saved: {record['created_at']}"
+                        )
 
-                    # Delete saved conversation.
-                    if st.button(
-                        "Delete Conversation",
-                        key=f"delete_history_{history_id}",
-                        use_container_width=True,
-                    ):
-
-                        try:
-
-                            delete_response = delete_chat_history(
-                                history_id
-                            )
-
-                            if delete_response.ok:
-
-                                st.sidebar.success(
-                                    "Conversation deleted successfully."
+                        if st.button(
+                            "Open Conversation",
+                            key=f"open_history_{history_id}",
+                            use_container_width=True,
+                        ):
+                            try:
+                                detail_response = (
+                                    fetch_single_chat_history(history_id)
                                 )
 
-                                st.rerun()
+                                if detail_response.ok:
+                                    saved_record = detail_response.json()
+                                    saved_content = json.loads(
+                                        saved_record["content"]
+                                    )
 
-                            else:
+                                    if (
+                                        saved_record["conversation_type"]
+                                        == "qa"
+                                    ):
+                                        if not isinstance(
+                                            saved_content, dict
+                                        ):
+                                            raise ValueError(
+                                                "Invalid saved Q&A data."
+                                            )
 
+                                        st.session_state["qa_result"] = (
+                                            saved_content
+                                        )
+                                        st.session_state.pop(
+                                            "cybertalk_result",
+                                            None,
+                                        )
+
+                                    elif (
+                                        saved_record["conversation_type"]
+                                        == "dialogue"
+                                    ):
+                                        if not isinstance(
+                                            saved_content, dict
+                                        ):
+                                            raise ValueError(
+                                                "Invalid saved dialogue data."
+                                            )
+
+                                        st.session_state[
+                                            "cybertalk_result"
+                                        ] = saved_content
+                                        st.session_state.pop(
+                                            "qa_result",
+                                            None,
+                                        )
+
+                                    st.rerun()
+
+                                else:
+                                    st.sidebar.error(
+                                        "Could not open this conversation: "
+                                        f"{get_api_error(detail_response)}"
+                                    )
+
+                            except (
+                                requests.exceptions.RequestException,
+                                ValueError,
+                                KeyError,
+                            ):
                                 st.sidebar.error(
-                                    "Could not delete conversation: "
-                                    f"{get_api_error(delete_response)}"
+                                    "Could not load the saved conversation."
                                 )
 
-                        except requests.exceptions.RequestException:
+                # Three-dot menu actions.
+                if st.session_state.get(menu_key, False):
+                    with st.sidebar.container(border=True):
+                        st.caption("Conversation actions")
 
-                            st.sidebar.error(
-                                "Could not connect to the API."
+                        with st.form(
+                            key=f"rename_history_form_{history_id}"
+                        ):
+                            new_title = st.text_input(
+                                "Conversation title",
+                                value=title,
+                                max_chars=500,
+                                key=f"rename_title_{history_id}",
                             )
+
+                            rename_submitted = st.form_submit_button(
+                                "Rename",
+                                use_container_width=True,
+                            )
+
+                            if rename_submitted:
+                                if not new_title.strip():
+                                    st.sidebar.warning(
+                                        "Conversation title cannot be empty."
+                                    )
+
+                                elif new_title.strip() == title:
+                                    st.sidebar.info(
+                                        "The conversation title has not changed."
+                                    )
+
+                                else:
+                                    try:
+                                        rename_response = rename_chat_history(
+                                            history_id,
+                                            new_title.strip(),
+                                        )
+
+                                        if rename_response.ok:
+                                            st.session_state[menu_key] = False
+                                            st.rerun()
+
+                                        else:
+                                            st.sidebar.error(
+                                                "Could not rename conversation: "
+                                                f"{get_api_error(rename_response)}"
+                                            )
+
+                                    except requests.exceptions.RequestException:
+                                        st.sidebar.error(
+                                            "Could not connect to the API."
+                                        )
+
+                        st.divider()
+
+                        st.button(
+                            "Share (coming soon)",
+                            key=f"share_history_{history_id}",
+                            disabled=True,
+                            use_container_width=True,
+                        )
+
+                        if st.button(
+                            "Delete",
+                            key=f"request_delete_history_{history_id}",
+                            use_container_width=True,
+                        ):
+                            st.session_state[menu_key] = False
+                            show_delete_confirmation(history_id, title)
 
     else:
-
         st.sidebar.warning(
             "Could not load your chat history."
         )
 
 except requests.exceptions.RequestException:
-
     st.sidebar.warning(
         "Chat history is currently unavailable."
     )

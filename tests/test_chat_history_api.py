@@ -327,3 +327,83 @@ def test_delete_history_without_token():
     response = client.delete("/history/1")
 
     assert response.status_code == 401
+def test_rename_chat_history_success():
+    user = create_test_user()
+
+    saved = save_test_conversation(user["id"])
+    history_id = saved.json()["id"]
+
+    response = client.put(
+        f"/history/{history_id}",
+        headers=auth_headers(user["id"]),
+        json={"title": "Updated Phishing Discussion"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == (
+        "Updated Phishing Discussion"
+    )
+
+    # Verify that the conversation content remains unchanged.
+    assert "phishing" in response.json()["content"]
+
+
+def test_user_cannot_rename_another_users_history():
+    user1 = create_test_user("historyuser1")
+    user2 = create_test_user("historyuser2")
+
+    saved = save_test_conversation(user1["id"])
+    history_id = saved.json()["id"]
+
+    response = client.put(
+        f"/history/{history_id}",
+        headers=auth_headers(user2["id"]),
+        json={"title": "Unauthorized Rename"},
+    )
+
+    assert response.status_code == 404
+
+    # Verify that the original title remains unchanged.
+    check = client.get(
+        f"/history/{history_id}",
+        headers=auth_headers(user1["id"]),
+    )
+
+    assert check.status_code == 200
+    assert check.json()["title"] == "Test conversation"
+
+
+def test_rename_nonexistent_chat_history():
+    user = create_test_user()
+
+    response = client.put(
+        "/history/99999",
+        headers=auth_headers(user["id"]),
+        json={"title": "New Title"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_rename_chat_history_with_empty_title():
+    user = create_test_user()
+
+    saved = save_test_conversation(user["id"])
+    history_id = saved.json()["id"]
+
+    response = client.put(
+        f"/history/{history_id}",
+        headers=auth_headers(user["id"]),
+        json={"title": "   "},
+    )
+
+    assert response.status_code == 422
+
+
+def test_rename_chat_history_without_token():
+    response = client.put(
+        "/history/1",
+        json={"title": "Unauthorized"},
+    )
+
+    assert response.status_code == 401
