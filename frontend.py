@@ -1395,11 +1395,24 @@ try:
 
                         st.divider()
 
+                        st.divider()
+
+                        st.caption("Share or export conversation")
+
                         st.button(
-                            "Share (coming soon)",
-                            key=f"share_history_{history_id}",
+                            "🔗 Copy Shareable Link",
+                            key=f"share_link_{history_id}",
                             disabled=True,
                             use_container_width=True,
+                            help="Shareable links will be available soon.",
+                        )
+
+                        st.button(
+                            "📥 Download Conversation",
+                            key=f"download_history_{history_id}",
+                            disabled=True,
+                            use_container_width=True,
+                            help="Conversation downloads will be available soon.",
                         )
 
                         if st.button(
