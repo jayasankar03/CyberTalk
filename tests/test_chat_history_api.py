@@ -407,3 +407,83 @@ def test_rename_chat_history_without_token():
     )
 
     assert response.status_code == 401
+def test_delete_all_chat_history_success():
+    user1 = create_test_user("bulkuser1")
+    user2 = create_test_user("bulkuser2")
+
+    # Create two conversations for user 1.
+    save_test_conversation(user1["id"], "Conversation One")
+    save_test_conversation(user1["id"], "Conversation Two")
+
+    # Create one conversation for user 2.
+    save_test_conversation(user2["id"], "Other User Conversation")
+
+    response = client.delete(
+        "/history",
+        headers=auth_headers(user1["id"]),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["deleted_count"] == 2
+
+    # User 1 should have no remaining conversations.
+    user1_history = client.get(
+        "/history",
+        headers=auth_headers(user1["id"]),
+    )
+
+    assert user1_history.status_code == 200
+    assert user1_history.json() == []
+
+    # User 2's conversation must remain untouched.
+    user2_history = client.get(
+        "/history",
+        headers=auth_headers(user2["id"]),
+    )
+
+    assert user2_history.status_code == 200
+    assert len(user2_history.json()) == 1
+    assert user2_history.json()[0]["title"] == (
+        "Other User Conversation"
+    )
+
+
+def test_delete_all_chat_history_when_empty():
+    user = create_test_user("emptybulkuser")
+
+    response = client.delete(
+        "/history",
+        headers=auth_headers(user["id"]),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["deleted_count"] == 0
+
+
+def test_delete_all_chat_history_without_token():
+    response = client.delete("/history")
+
+    assert response.status_code == 401
+
+
+def test_delete_all_chat_history_preserves_other_users_data():
+    user1 = create_test_user("bulkowner")
+    user2 = create_test_user("bulkother")
+
+    save_test_conversation(user1["id"], "Owner Conversation")
+    save_test_conversation(user2["id"], "Protected Conversation")
+
+    response = client.delete(
+        "/history",
+        headers=auth_headers(user1["id"]),
+    )
+
+    assert response.status_code == 200
+
+    remaining = client.get(
+        "/history",
+        headers=auth_headers(user2["id"]),
+    )
+
+    assert len(remaining.json()) == 1
+    assert remaining.json()[0]["title"] == "Protected Conversation"

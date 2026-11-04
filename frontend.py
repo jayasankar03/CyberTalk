@@ -268,6 +268,77 @@ def delete_chat_history(history_id):
         timeout=15,
     )
 
+def delete_all_chat_history():
+    """Delete all conversations belonging to the current user."""
+
+    return requests.delete(
+        f"{API_URL}/history",
+        headers=get_auth_headers(),
+        timeout=30,
+    )
+
+
+@st.dialog("Delete all conversations?")
+def show_delete_all_confirmation():
+    """Confirm and delete all conversations for the current user."""
+
+    st.warning(
+        "You are about to permanently delete all your saved conversations."
+    )
+
+    st.caption(
+        "This action cannot be undone. Other users' conversations "
+        "will not be affected."
+    )
+
+    confirm_col, cancel_col = st.columns(2)
+
+    with confirm_col:
+        if st.button(
+            "Delete All",
+            key="confirm_delete_all_chats",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                response = delete_all_chat_history()
+
+                if response.ok:
+                    result = response.json()
+                    deleted_count = result.get("deleted_count", 0)
+
+                    st.session_state["delete_all_success"] = (
+                        deleted_count
+                    )
+
+                    # Clear any conversation currently displayed.
+                    st.session_state.pop("qa_result", None)
+                    st.session_state.pop("cybertalk_result", None)
+
+                    # Clear history-related UI state.
+                    for key in list(st.session_state.keys()):
+                        if (
+                            key.startswith("show_history_menu_")
+                            or key.startswith("show_history_details_")
+                        ):
+                            st.session_state.pop(key, None)
+
+                    st.rerun()
+
+                else:
+                    st.error(get_api_error(response))
+
+            except requests.exceptions.RequestException:
+                st.error("Could not connect to the API. Please try again.")
+
+    with cancel_col:
+        if st.button(
+            "Cancel",
+            key="cancel_delete_all_chats",
+            use_container_width=True,
+        ):
+            st.rerun()
+
 def rename_chat_history(history_id, new_title):
     """Rename one conversation belonging to the current user."""
 
@@ -1108,7 +1179,12 @@ def show_delete_confirmation(history_id, title):
 
 st.sidebar.divider()
 st.sidebar.subheader("📚 My Chat History")
+if "delete_all_success" in st.session_state:
+    deleted_count = st.session_state.pop("delete_all_success")
 
+    st.sidebar.success(
+        f"Successfully deleted {deleted_count} conversation(s)."
+    )
 try:
     history_response = fetch_chat_history()
 
@@ -1132,8 +1208,15 @@ try:
 
         else:
             st.sidebar.caption(
-                f"{len(history_records)} saved conversation(s)"
+            f"{len(history_records)} saved conversation(s)"
             )
+
+            if st.sidebar.button(
+                "🗑️ Delete All Chats",
+                key="delete_all_chats_button",
+                use_container_width=True,
+            ):
+                show_delete_all_confirmation()
 
             for record in history_records:
                 history_id = record["id"]
