@@ -1,4 +1,5 @@
 
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -630,14 +631,82 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         profile_button = next(
-            button
-            for button in app.button
+            button for button in app.button
             if button.label == "👤"
         )
-
         profile_button.click().run(timeout=10)
 
+        edit_button = next(
+            button for button in app.button
+            if button.label == "Edit Profile"
+        )
+        edit_button.click().run(timeout=10)
+
         return app
+
+    def test_profile_forms_are_hidden_by_default(self):
+        app = self.run_authenticated_app()
+
+        profile_button = next(
+            button for button in app.button
+            if button.label == "👤"
+        )
+        profile_button.click().run(timeout=10)
+
+        input_labels = [field.label for field in app.text_input]
+
+        self.assertNotIn("Username", input_labels)
+        self.assertNotIn("Email Address", input_labels)
+        self.assertNotIn("Current Password", input_labels)
+        self.assertNotIn("New Password", input_labels)
+        self.assertNotIn("Confirm New Password", input_labels)
+
+    def test_edit_profile_form_only_appears_when_requested(self):
+        app = self.run_authenticated_app()
+
+        profile_button = next(
+            button for button in app.button
+            if button.label == "👤"
+        )
+        profile_button.click().run(timeout=10)
+
+        edit_button = next(
+            button for button in app.button
+            if button.label == "Edit Profile"
+        )
+        edit_button.click().run(timeout=10)
+
+        input_labels = [field.label for field in app.text_input]
+
+        self.assertIn("Username", input_labels)
+        self.assertIn("Email Address", input_labels)
+        self.assertNotIn("Current Password", input_labels)
+        self.assertNotIn("New Password", input_labels)
+        self.assertNotIn("Confirm New Password", input_labels)
+
+    def test_change_password_form_only_appears_when_requested(self):
+        app = self.run_authenticated_app()
+
+        profile_button = next(
+            button for button in app.button
+            if button.label == "👤"
+        )
+        profile_button.click().run(timeout=10)
+
+        password_button = next(
+            button for button in app.button
+            if button.label == "Change Password"
+        )
+        password_button.click().run(timeout=10)
+
+        input_labels = [field.label for field in app.text_input]
+
+        self.assertIn("Current Password", input_labels)
+        self.assertIn("New Password", input_labels)
+        self.assertIn("Confirm New Password", input_labels)
+        self.assertNotIn("Username", input_labels)
+        self.assertNotIn("Email Address", input_labels)
+
 
     @patch("requests.put")
     def test_profile_update_success(self, mock_put):
@@ -727,5 +796,110 @@ class FrontendTests(unittest.TestCase):
                 for element in app.error
             )
         )
+
+    def test_qa_conversation_has_pdf_and_txt_downloads(self):
+        history_records = [
+            {
+                "id": 101,
+                "conversation_type": "qa",
+                "title": "How does MFA work?",
+                "created_at": "2026-11-02T10:00:00",
+            }
+        ]
+
+        history_detail = {
+            "id": 101,
+            "conversation_type": "qa",
+            "title": "How does MFA work?",
+            "content": (
+                '{"question":"How does MFA work?",'
+                '"answer":"MFA adds another layer of authentication."}'
+            ),
+            "created_at": "2026-11-02T10:00:00",
+        }
+
+        app = self.run_authenticated_app(
+            history_records=history_records,
+            history_detail=history_detail,
+        )
+
+        menu_button = next(
+            button for button in app.button
+            if button.label == "⋮"
+        )
+        menu_button.click().run(timeout=10)
+
+        download_buttons = app.get("download_button")
+        download_labels = [
+            button.label for button in download_buttons
+        ]
+
+        self.assertIn("Download as PDF", download_labels)
+        self.assertIn("Download as TXT", download_labels)
+
+    def test_dialogue_conversation_has_pdf_and_txt_downloads(self):
+        history_records = [
+            {
+                "id": 102,
+                "conversation_type": "dialogue",
+                "title": "Improve cloud security",
+                "created_at": "2026-11-02T10:00:00",
+            }
+        ]
+
+        history_detail = {
+            "id": 102,
+            "conversation_type": "dialogue",
+            "title": "Improve cloud security",
+            "content": json.dumps({
+                "topic": "Improve cloud security",
+                "rounds": 2,
+                "stakeholders": [
+                    {"name": "Security Architect"},
+                    {"name": "Cloud Engineer"},
+                ],
+                "dialogue": [
+                    {
+                        "turn": 1,
+                        "speaker": "Security Architect",
+                        "message": "We should enable MFA.",
+                    },
+                    {
+                        "turn": 2,
+                        "speaker": "Cloud Engineer",
+                        "message": "I agree with enabling MFA.",
+                    },
+                ],
+                "agreement": {
+                    "status": "agreement_reached",
+                    "explanation": "Both stakeholders agreed.",
+                    "shared_decision": "Enable MFA.",
+                    "unresolved_disagreements": [],
+                    "next_actions": ["Enable MFA for all users."],
+                },
+            }),
+            "created_at": "2026-11-02T10:00:00",
+        }
+
+        app = self.run_authenticated_app(
+            history_records=history_records,
+            history_detail=history_detail,
+        )
+
+        menu_button = next(
+            button for button in app.button
+            if button.label == "⋮"
+        )
+        menu_button.click().run(timeout=10)
+
+        download_buttons = app.get("download_button")
+        download_labels = [
+            button.label for button in download_buttons
+        ]
+
+        self.assertIn("Download as PDF", download_labels)
+        self.assertIn("Download as TXT", download_labels)
+
+
 if __name__ == "__main__":
     unittest.main()
