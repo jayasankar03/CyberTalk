@@ -137,6 +137,14 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirmRequest(BaseModel):
     token: str = Field(min_length=20, max_length=200)
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+    confirm_new_password: str = Field(min_length=8, max_length=128)
+
+
 class UserProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -147,6 +155,7 @@ class UserProfileResponse(BaseModel):
     created_at: datetime
 # JWT bearer authentication
 security = HTTPBearer(auto_error=False)
+
 class UserProfileUpdateRequest(BaseModel):
     username: str = Field(min_length=3, max_length=50)
     email: str = Field(min_length=5, max_length=255)
@@ -538,6 +547,77 @@ def confirm_password_reset(
 
     return {
         "message": "Password has been reset successfully."
+    }
+
+@app.post("/change-password")
+def change_password(
+    request: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Allow an authenticated user to securely change their password."""
+
+    # Verify that the current password is correct.
+    if not verify_password(
+        request.current_password,
+        current_user.hashed_password,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect.",
+        )
+
+    # Ensure the new password and confirmation match.
+    if request.new_password != request.confirm_new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New passwords do not match.",
+        )
+
+    # Prevent changing the password to the existing password.
+    if verify_password(
+        request.new_password,
+        current_user.hashed_password,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from the current password.",
+        )
+
+    current_time = datetime.now(timezone.utc)
+
+    try:
+        # Hash and update the new password.
+        current_user.hashed_password = hash_password(
+            request.new_password
+        )
+
+        # Invalidate all outstanding password-reset tokens.
+        db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == current_user.id,
+            PasswordResetToken.used_at.is_(None),
+        ).update(
+            {"used_at": current_time},
+            synchronize_session=False,
+        )
+
+        # Save the password update and token invalidation together.
+        db.commit()
+
+    except Exception:
+        db.rollback()
+
+        logger.exception(
+            "Failed to change password."
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to change password. Please try again.",
+        )
+
+    return {
+        "message": "Password changed successfully."
     }
 @app.get(
     "/users/me",

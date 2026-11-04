@@ -877,12 +877,82 @@ if st.session_state["show_profile"]:
                     )
 
     st.divider()
+    st.subheader("Change Password")
+    st.caption("Update your account password securely.")
+
+    with st.form("change_password_form"):
+        current_password = st.text_input(
+            "Current Password",
+            type="password",
+        )
+
+        new_password = st.text_input(
+            "New Password",
+            type="password",
+            help="Must contain at least 8 characters.",
+        )
+
+        confirm_new_password = st.text_input(
+            "Confirm New Password",
+            type="password",
+        )
+
+        change_password_submitted = st.form_submit_button(
+            "Change Password",
+            use_container_width=True,
+        )
+
+    if change_password_submitted:
+        if not current_password or not new_password or not confirm_new_password:
+            st.error("Please fill in all password fields.")
+
+        elif len(new_password) < 8:
+            st.error("New password must contain at least 8 characters.")
+
+        elif new_password != confirm_new_password:
+            st.error("New passwords do not match.")
+
+        elif new_password == current_password:
+            st.error("New password must be different from the current password.")
+
+        else:
+            try:
+                response = requests.post(
+                    f"{API_URL}/change-password",
+                    headers=get_auth_headers(),
+                    json={
+                        "current_password": current_password,
+                        "new_password": new_password,
+                        "confirm_new_password": confirm_new_password,
+                    },
+                    timeout=15,
+                )
+
+                if response.status_code == 200:
+                    st.success("Password changed successfully!")
+
+                elif response.status_code == 401:
+                    st.session_state["access_token"] = None
+                    st.error(
+                        "Your session has expired. Please log in again."
+                    )
+                    st.rerun()
+
+                else:
+                    st.error(get_api_error(response))
+
+            except requests.RequestException:
+                st.error(
+                    "Unable to connect to the CyberTalk server. "
+                    "Please try again."
+                )
+
+    st.divider()
     st.subheader("Account Information")
 
     profile_col1, profile_col2 = st.columns(2)
 
     with profile_col1:
-
         st.metric(
             "User ID",
             current_user.get("id", "N/A"),
@@ -894,7 +964,6 @@ if st.session_state["show_profile"]:
         )
 
     with profile_col2:
-
         st.metric(
             "Account Role",
             current_user.get("role", "user").title(),
@@ -906,7 +975,6 @@ if st.session_state["show_profile"]:
         )
 
     st.divider()
-
     st.subheader("Account Details")
 
     created_at = current_user.get(
@@ -928,7 +996,6 @@ if st.session_state["show_profile"]:
         use_container_width=True,
         key="profile_logout",
     ):
-
         st.session_state["access_token"] = None
         st.session_state["show_profile"] = False
 
