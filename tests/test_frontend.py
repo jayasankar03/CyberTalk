@@ -123,7 +123,11 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_input[0].set_value("   ")
-        app.button[0].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Ask CyberTalk"
+        ).click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -139,7 +143,11 @@ class FrontendTests(unittest.TestCase):
         app.text_input[1].set_value("Security Architect")
         app.text_input[2].set_value("Cloud Engineer")
 
-        app.button[1].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Generate CyberTalk Dialogue"
+        ).click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -155,7 +163,11 @@ class FrontendTests(unittest.TestCase):
         app.text_input[1].set_value("A")
         app.text_input[2].set_value("Cloud Engineer")
 
-        app.button[1].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Generate CyberTalk Dialogue"
+        ).click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -172,7 +184,11 @@ class FrontendTests(unittest.TestCase):
         app.text_input[1].set_value("Security Officer")
         app.text_input[2].set_value(" security officer ")
 
-        app.button[1].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Generate CyberTalk Dialogue"
+        ).click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -200,7 +216,11 @@ class FrontendTests(unittest.TestCase):
             "How can MFA improve account security?"
         )
 
-        app.button[0].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Ask CyberTalk"
+        ).click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -262,7 +282,11 @@ class FrontendTests(unittest.TestCase):
         app.text_input[1].set_value("Security Architect")
         app.text_input[2].set_value("Cloud Engineer")
 
-        app.button[1].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Generate CyberTalk Dialogue"
+        ).click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -296,7 +320,11 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_input[0].set_value("How does encryption work?")
-        app.button[0].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Ask CyberTalk"
+        ).click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -318,7 +346,11 @@ class FrontendTests(unittest.TestCase):
         app.text_input[1].set_value("Security Architect")
         app.text_input[2].set_value("Cloud Engineer")
 
-        app.button[1].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Generate CyberTalk Dialogue"
+        ).click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -345,7 +377,11 @@ class FrontendTests(unittest.TestCase):
         app.text_input[1].set_value("Security Architect")
         app.text_input[2].set_value("Cloud Engineer")
 
-        app.button[1].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Generate CyberTalk Dialogue"
+        ).click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -371,7 +407,11 @@ class FrontendTests(unittest.TestCase):
         app.text_input[0].set_value(
             "How can MFA protect user accounts?"
         )
-        app.button[0].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Ask CyberTalk"
+        ).click().run(timeout=10)
 
         self.assertEqual(mock_post.call_count, 2)
 
@@ -443,7 +483,11 @@ class FrontendTests(unittest.TestCase):
         app.text_input[1].set_value("Security Architect")
         app.text_input[2].set_value("Cloud Engineer")
 
-        app.button[1].click().run(timeout=10)
+        next(
+            button
+            for button in app.button
+            if button.label == "Generate CyberTalk Dialogue"
+        ).click().run(timeout=10)
 
         self.assertEqual(mock_post.call_count, 2)
 

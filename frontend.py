@@ -161,8 +161,7 @@ def render_cybertalk_logo():
         )
 
     with title_col:
-        st.title("CyberTalk")
-
+        st.title("CyberTalk", anchor=False)
 
 API_URL = os.getenv(
     "CYBERTALK_API_URL",
@@ -759,22 +758,112 @@ st.sidebar.caption(
 )
 
 
+
 # -----------------------------
-# Logout
+# Top-right Profile Icon
 # -----------------------------
 
-if st.sidebar.button(
-    "Log Out",
-    use_container_width=True,
-):
+st.session_state.setdefault("show_profile", False)
 
-    st.session_state["access_token"] = None
+top_spacer, profile_column = st.columns([12, 1])
 
-    st.session_state.pop("qa_result", None)
-    st.session_state.pop("cybertalk_result", None)
+with profile_column:
 
-    st.rerun()
+    if st.button(
+        "👤",
+        help="Open My Profile",
+        key="profile_icon_button",
+        use_container_width=True,
+    ):
 
+        st.session_state["show_profile"] = (
+            not st.session_state["show_profile"]
+        )
+
+        st.rerun()
+
+
+# -----------------------------
+# My Profile Page
+# -----------------------------
+
+if st.session_state["show_profile"]:
+    if st.button(
+        "← Back to Chat",
+        key="back_to_chat",
+    ):
+        st.session_state["show_profile"] = False
+        st.rerun()
+
+    st.title("My Profile")
+
+    st.write(
+        "View your CyberTalk account information."
+    )
+
+    st.divider()
+
+    st.subheader("Account Information")
+
+    profile_col1, profile_col2 = st.columns(2)
+
+    with profile_col1:
+
+        st.metric(
+            "User ID",
+            current_user.get("id", "N/A"),
+        )
+
+        st.metric(
+            "Username",
+            current_user.get("username", "N/A"),
+        )
+
+    with profile_col2:
+
+        st.metric(
+            "Account Role",
+            current_user.get("role", "user").title(),
+        )
+
+        st.metric(
+            "Email Address",
+            current_user.get("email", "N/A"),
+        )
+
+    st.divider()
+
+    st.subheader("Account Details")
+
+    created_at = current_user.get(
+        "created_at",
+        "Not available",
+    )
+
+    st.write(f"**Registration Date:** {created_at}")
+
+    st.caption(
+        "Your profile information is retrieved securely "
+        "from your authenticated CyberTalk account."
+    )
+
+    st.divider()
+
+    if st.button(
+        "Log Out",
+        use_container_width=True,
+        key="profile_logout",
+    ):
+
+        st.session_state["access_token"] = None
+        st.session_state["show_profile"] = False
+
+        st.session_state.pop("qa_result", None)
+        st.session_state.pop("cybertalk_result", None)
+
+        st.rerun()
+
+    st.stop()
 
 # -----------------------------
 # Chat History Sidebar
