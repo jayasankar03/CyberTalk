@@ -2470,6 +2470,7 @@ if submitted:
             )
 
 
+
 # -----------------------------
 # Display stakeholder dialogue
 # -----------------------------
@@ -2479,7 +2480,6 @@ result = st.session_state.get("cybertalk_result")
 if result:
 
     st.divider()
-
     st.header("Discussion Results")
 
     st.markdown(
@@ -2488,28 +2488,33 @@ if result:
 
     stakeholders = result.get("stakeholders", [])
 
-    if stakeholders:
+    stakeholder_names = [
+        item.get("name", "Unknown stakeholder")
+        for item in stakeholders
+    ]
 
-        names = [
-            item.get("name", "Unknown stakeholder")
-            for item in stakeholders
-        ]
+    if stakeholder_names:
 
         st.markdown(
-            "**Stakeholders:** " + " and ".join(names)
+            "**Stakeholders:** "
+            + " and ".join(stakeholder_names)
         )
 
     st.markdown(
         f"**Discussion rounds:** "
         f"{result.get('rounds', 'Unknown')}"
     )
-    # Display AI performance metrics.
+
+    # -----------------------------
+    # AI performance metrics
+    # -----------------------------
+
     performance = result.get("performance", {})
 
     if isinstance(performance, dict) and performance:
 
         st.divider()
-        st.subheader("⏱️ AI Performance")
+        st.subheader("AI Performance")
 
         perf_col1, perf_col2, perf_col3 = st.columns(3)
 
@@ -2532,13 +2537,32 @@ if result:
             "Dialogue entries generated: "
             f"{performance.get('dialogue_entries', 0)}"
         )
+
     st.caption(
         "The final two statements are closing statements, "
         "in addition to the requested discussion rounds."
     )
 
-    # Display alternating discussion.
+    # -----------------------------
+    # Stakeholder discussion
+    # -----------------------------
+
+    st.divider()
     st.subheader("Stakeholder Dialogue")
+
+    st.caption(
+        "Follow the discussion between the two stakeholders."
+    )
+
+    # Assign distinct chat styles dynamically.
+    speaker_roles = {}
+
+    if len(stakeholder_names) >= 2:
+
+        speaker_roles = {
+            stakeholder_names[0].strip().casefold(): "user",
+            stakeholder_names[1].strip().casefold(): "assistant",
+        }
 
     dialogue = result.get("dialogue", [])
 
@@ -2551,10 +2575,20 @@ if result:
     for entry in dialogue:
 
         turn_number = entry.get("turn", "?")
-        speaker = entry.get("speaker", "Unknown stakeholder")
+
+        speaker = entry.get(
+            "speaker",
+            "Unknown stakeholder",
+        )
+
         message = entry.get("message", "")
 
-        with st.chat_message("assistant"):
+        speaker_role = speaker_roles.get(
+            speaker.strip().casefold(),
+            "assistant",
+        )
+
+        with st.chat_message(speaker_role):
 
             st.markdown(
                 f"**Turn {turn_number} — {speaker}**"
@@ -2562,12 +2596,17 @@ if result:
 
             st.write(message)
 
-    # Display agreement evaluation.
-    st.divider()
+    # -----------------------------
+    # Final agreement evaluation
+    # -----------------------------
 
+    st.divider()
     st.subheader("Final Agreement Evaluation")
 
     agreement = result.get("agreement", {})
+
+    if not isinstance(agreement, dict):
+        agreement = {}
 
     status = agreement.get("status", "unknown")
 
@@ -2582,15 +2621,37 @@ if result:
         "no_agreement": "No agreement",
     }
 
-    st.markdown(
-        f"**Status:** {status_labels.get(status, status)}"
+    status_label = status_labels.get(
+        status,
+        status.replace("_", " ").title(),
     )
 
-    st.write(explanation)
+    st.markdown(f"**Status:** {status_label}")
 
-    shared_decision = agreement.get("shared_decision")
+    # Give each agreement outcome a distinct visual treatment.
+    if status == "agreement_reached":
+
+        st.success(explanation)
+
+    elif status == "partial_agreement":
+
+        st.warning(explanation)
+
+    elif status == "no_agreement":
+
+        st.error(explanation)
+
+    else:
+
+        st.info(explanation)
+
+    # -----------------------------
+    # Shared decision
+    # -----------------------------
 
     st.markdown("**Shared decision**")
+
+    shared_decision = agreement.get("shared_decision")
 
     if shared_decision:
 
@@ -2602,17 +2663,22 @@ if result:
             "The evaluator did not identify a confirmed shared decision."
         )
 
+    # -----------------------------
+    # Unresolved disagreements
+    # -----------------------------
+
+    st.markdown("**Unresolved disagreements**")
+
     unresolved = agreement.get(
         "unresolved_disagreements",
         [],
     )
 
-    st.markdown("**Unresolved disagreements**")
-
     if unresolved:
 
         for disagreement in unresolved:
-            st.write(f"- {disagreement}")
+
+            st.warning(disagreement)
 
     else:
 
@@ -2620,14 +2686,19 @@ if result:
             "No unresolved disagreements were reported."
         )
 
-    next_actions = agreement.get("next_actions", [])
+    # -----------------------------
+    # Recommended next actions
+    # -----------------------------
 
     st.markdown("**Next actions**")
 
+    next_actions = agreement.get("next_actions", [])
+
     if next_actions:
 
-        for action in next_actions:
-            st.write(f"- {action}")
+        for index, action in enumerate(next_actions, start=1):
+
+            st.write(f"{index}. {action}")
 
     else:
 

@@ -328,6 +328,149 @@ class FrontendTests(unittest.TestCase):
         )
 
     @patch("requests.post")
+    def test_partial_agreement_uses_warning_presentation(
+        self, mock_post
+    ):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {
+            "topic": "Cloud security",
+            "stakeholders": [
+                {"name": "Security Architect"},
+                {"name": "Cloud Engineer"},
+            ],
+            "rounds": 1,
+            "dialogue": [
+                {
+                    "turn": 1,
+                    "speaker": "Security Architect",
+                    "message": "Enable MFA.",
+                },
+                {
+                    "turn": 1,
+                    "speaker": "Cloud Engineer",
+                    "message": "Use a phased rollout.",
+                },
+            ],
+            "agreement": {
+                "status": "partial_agreement",
+                "explanation": "The stakeholders partially agree.",
+                "shared_decision": None,
+                "unresolved_disagreements": [
+                    "Deployment timeline remains undecided."
+                ],
+                "next_actions": [
+                    "Review the deployment timeline."
+                ],
+            },
+        }
+
+        mock_post.return_value = mock_response
+
+        app = self.run_authenticated_app()
+
+        app.text_area[0].set_value("Cloud security")
+        app.text_input[1].set_value("Security Architect")
+        app.text_input[2].set_value("Cloud Engineer")
+
+        next(
+            button
+            for button in app.button
+            if button.label == "Generate CyberTalk Dialogue"
+        ).click().run(timeout=10)
+
+        self.assertTrue(
+            any(
+                "The stakeholders partially agree."
+                in element.value
+                for element in app.warning
+            )
+        )
+
+        self.assertTrue(
+            any(
+                "Deployment timeline remains undecided."
+                in element.value
+                for element in app.warning
+            )
+        )
+
+        self.assertTrue(
+            any(
+                "Review the deployment timeline."
+                in element.value
+                for element in app.markdown
+            )
+        )
+
+
+    @patch("requests.post")
+    def test_no_agreement_uses_error_presentation(
+        self, mock_post
+    ):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {
+            "topic": "Security monitoring",
+            "stakeholders": [
+                {"name": "Security Manager"},
+                {"name": "Operations Manager"},
+            ],
+            "rounds": 1,
+            "dialogue": [
+                {
+                    "turn": 1,
+                    "speaker": "Security Manager",
+                    "message": "Centralized monitoring is required.",
+                },
+                {
+                    "turn": 1,
+                    "speaker": "Operations Manager",
+                    "message": "We cannot approve it yet.",
+                },
+            ],
+            "agreement": {
+                "status": "no_agreement",
+                "explanation": "The stakeholders could not agree.",
+                "shared_decision": None,
+                "unresolved_disagreements": [
+                    "Monitoring implementation remains disputed."
+                ],
+                "next_actions": [],
+            },
+        }
+
+        mock_post.return_value = mock_response
+
+        app = self.run_authenticated_app()
+
+        app.text_area[0].set_value("Security monitoring")
+        app.text_input[1].set_value("Security Manager")
+        app.text_input[2].set_value("Operations Manager")
+
+        next(
+            button
+            for button in app.button
+            if button.label == "Generate CyberTalk Dialogue"
+        ).click().run(timeout=10)
+
+        self.assertTrue(
+            any(
+                "The stakeholders could not agree."
+                in element.value
+                for element in app.error
+            )
+        )
+
+        self.assertTrue(
+            any(
+                "Monitoring implementation remains disputed."
+                in element.value
+                for element in app.warning
+            )
+        )
+
+    @patch("requests.post")
     def test_qa_api_connection_error_is_handled(self, mock_post):
         import requests
 
