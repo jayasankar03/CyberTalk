@@ -169,7 +169,7 @@ st.markdown(
 
 
 def render_cybertalk_logo():
-    """Render a professional CyberTalk shield and wordmark."""
+    """Render the original CyberTalk CT shield logo."""
 
     logo_col, title_col = st.columns(
         [0.7, 7],
@@ -761,7 +761,7 @@ if not st.session_state.get("access_token"):
     # About CyberTalk Landing Page
     # -------------------------
 
-    st.title("CyberTalk")
+    render_cybertalk_logo()
     st.subheader("Two Chatbots, One Agreement")
 
     st.markdown(
