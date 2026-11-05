@@ -37,13 +37,13 @@ st.markdown(
     """
     <style>
 
-    /* Main application background */
+    /* Refined dark cybersecurity background */
     .stApp {
         background: linear-gradient(
             135deg,
-            #071426 0%,
-            #10243d 50%,
-            #091a2e 100%
+            #050b14 0%,
+            #0a1625 50%,
+            #07111d 100%
         );
         color: #eaf2ff;
     }
@@ -158,6 +158,100 @@ st.markdown(
         background: #10243d;
         border: 1px solid #34516f;
         border-radius: 14px;
+    }
+    /* About page hero section */
+    .about-hero {
+        text-align: center;
+        padding: 48px 24px;
+        margin: 20px 0 32px 0;
+        background: linear-gradient(
+            135deg,
+            #0c1b2d,
+            #102943
+        );
+        border: 1px solid #234663;
+        border-radius: 16px;
+    }
+
+    .about-eyebrow {
+        color: #19c9f4;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 3px;
+        margin-bottom: 16px;
+    }
+
+    .about-hero h1 {
+        color: #f0f6ff;
+        font-size: 38px;
+        font-weight: 750;
+        margin-bottom: 16px;
+    }
+
+    .about-hero p {
+        color: #b8c9dc;
+        font-size: 16px;
+        line-height: 1.8;
+        max-width: 760px;
+        margin: auto;
+    }
+
+    /* About page feature cards */
+    .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        margin: 20px 0 30px 0;
+    }
+
+    .feature-card {
+        background: #0c1b2b;
+        border: 1px solid #203d57;
+        border-radius: 12px;
+        padding: 22px;
+    }
+
+    .feature-card h3 {
+        color: #eaf2ff;
+        font-size: 18px;
+        margin-bottom: 10px;
+    }
+
+    .feature-card p {
+        color: #aebfd2;
+        font-size: 14px;
+        line-height: 1.7;
+        margin-bottom: 0;
+    }
+
+    .feature-number {
+        color: #19c9f4;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        margin-bottom: 12px;
+    }
+
+    /* Landing page authentication button */
+    [class*="st-key-landing_sign_in_button"] button {
+        min-height: 44px;
+        border-radius: 9px;
+        font-weight: 700;
+    }
+
+    /* Responsive feature layout */
+    @media (max-width: 700px) {
+        .feature-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .about-hero {
+            padding: 32px 16px;
+        }
+
+        .about-hero h1 {
+            font-size: 28px;
+        }
     }
     </style>
     """,
@@ -761,133 +855,179 @@ if not st.session_state.get("access_token"):
     # About CyberTalk Landing Page
     # -------------------------
 
-    render_cybertalk_logo()
-    st.subheader("Two Chatbots, One Agreement")
-
-    st.markdown(
-    """
-    <div style="text-align:center; padding:10px 10px 20px 10px;">
-        <h3>Two Chatbots, One Agreement</h3>
-        <p style="font-size:17px; max-width:750px; margin:auto;">
-            Explore cybersecurity challenges through AI-powered
-            discussions between two stakeholders with different
-            professional perspectives.
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-    st.divider()
-
-    st.header("About the Application")
-
-    st.write(
-        """
-        CyberTalk is a Generative AI-powered cybersecurity discussion
-        platform. It brings together two user-defined stakeholders
-        with different professional responsibilities to discuss
-        cybersecurity challenges.
-
-        Each stakeholder contributes their perspective through an
-        AI-generated conversation. At the end, CyberTalk evaluates
-        their discussion and presents the final agreement, unresolved
-        disagreements, shared decisions, and recommended next actions.
-        """
+    # Top navigation: original logo on the left, authentication on the right.
+    header_column, auth_column = st.columns(
+        [8, 1.5],
+        vertical_alignment="center",
     )
 
-    st.header("What You Can Do With CyberTalk")
+    with header_column:
+        render_cybertalk_logo()
 
-    st.markdown("#### Stakeholder Dialogue")
-    st.write(
-        "Create structured discussions between two stakeholders "
-        "using your own professional roles and responsibilities."
-    )
+    with auth_column:
+        st.button(
+            "Sign In",
+            key="landing_sign_in_button",
+            type="primary",
+            use_container_width=True,
+            on_click=open_auth_dialog,
+        )
 
-    st.markdown("#### Cybersecurity Q&A")
-    st.write(
-        "Ask cybersecurity-related questions and receive "
-        "AI-generated explanations and guidance."
-    )
-
-    st.markdown("#### Agreement Evaluation")
-    st.write(
-        "Understand whether the stakeholders reach an agreement, "
-        "partially agree, or disagree."
-    )
-
-    st.markdown("#### Chat History")
-    st.write(
-        "Save, revisit, rename, share, and download your conversations."
-    )
-
-    st.markdown("#### Configurable Discussions")
-    st.write(
-        "Choose between one and five discussion rounds depending "
-        "on the complexity of the topic."
-    )
-
-    st.subheader("Configurable Discussions")
-    st.write(
-        "Choose between one and five discussion rounds depending "
-        "on the complexity of the topic."
-    )
-
-    st.divider()
-
-    st.header("How It Works")
-
-    st.write("1. Enter a cybersecurity discussion topic.")
-    st.write("2. Define two different stakeholder roles.")
-    st.write("3. Select the number of discussion rounds.")
-    st.write("4. Let the AI generate the stakeholder conversation.")
-    st.write("5. Review the final agreement and recommended actions.")
-
-    st.divider()
-
-    st.header("Technology Behind CyberTalk")
-
-    st.write(
-        "Python · FastAPI · Streamlit · Ollama · "
-        "Llama 3.2 · SQLAlchemy · SQLite · Pydantic"
-    )
-
-    st.divider()
-
+    # Hero section
     st.markdown(
         """
-        <div style="text-align:center; padding:25px 10px;">
-            <h2>Ready to Explore CyberTalk?</h2>
-            <p style="font-size:16px;">
-                Sign in or create an account to experience
-                a new way of exploring cybersecurity decisions.
+        <div class="about-hero">
+            <div class="about-eyebrow">
+                CYBERSECURITY DECISION SUPPORT
+            </div>
+            <h1>Two Chatbots, One Agreement</h1>
+            <p>
+                Explore complex cybersecurity challenges through
+                AI-powered discussions between two stakeholders
+                with different professional perspectives.
+                Compare viewpoints, evaluate decisions, and
+                discover a shared path forward.
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    _, button_column, _ = st.columns([1, 2, 1])
+    # About section
+    st.header("About CyberTalk")
 
-    with button_column:
-        st.button(
-            "See What's Inside",
-            key="see_whats_inside_button",
-            type="primary",
-            use_container_width=True,
-            on_click=open_auth_dialog,
-        )
+    st.write(
+        """
+        CyberTalk is a Generative AI-powered cybersecurity
+        discussion platform.
 
-    st.divider()
+        It brings together two user-defined stakeholders with
+        different professional responsibilities to examine
+        cybersecurity challenges.
+
+        Through structured AI-generated conversations, CyberTalk
+        explores competing perspectives and evaluates whether
+        stakeholders reach a shared decision, partially agree,
+        or maintain unresolved disagreements.
+        """
+    )
+
+    # Application features
+    st.header("Explore CyberTalk")
+
+    feature_cards = """
+    <div class="feature-grid">
+        <div class="feature-card">
+            <div class="feature-number">01 / DISCUSS</div>
+            <h3>Stakeholder Dialogue</h3>
+            <p>
+                Create structured conversations between
+                two stakeholders using your own professional
+                roles and responsibilities.
+            </p>
+        </div>
+
+        <div class ="feature-card">
+            <div class="feature-number">02 / LEARN</div>
+            <h3>Cybersecurity Q&amp;A</h3>
+            <p>
+                Ask cybersecurity-related questions and
+                receive AI-generated explanations and
+                practical guidance.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-number">03 / EVALUATE</div>
+            <h3>Agreement Evaluation</h3>
+            <p>
+                Understand whether stakeholders agree,
+                partially agree, or disagree, with
+                explanations and recommended next actions.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-number">04 / MANAGE</div>
+            <h3>Conversation History</h3>
+            <p>
+                Save, revisit, rename, share, and download
+                your previous cybersecurity conversations.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-number">05 / CONFIGURE</div>
+            <h3>Configurable Discussions</h3>
+            <p>
+                Select between one and five discussion
+                rounds based on the complexity of your topic.
+            </p>
+        </div>
+    </div>
+    """
+
+    st.html(feature_cards)
+
+    # How it works
+    st.header("How It Works")
 
     st.markdown(
         """
-        <div style="text-align:center; padding:10px;">
-            <p>CyberTalk — Two Chatbots, One Agreement</p>
+        1. Enter a cybersecurity discussion topic.
+        2. Define two different stakeholder roles.
+        3. Select the number of discussion rounds.
+        4. Generate the AI-powered stakeholder conversation.
+        5. Review the final agreement and recommended actions.
+        """
+    )
+
+    st.divider()
+
+    # Technology stack
+    st.header("Technology Behind CyberTalk")
+
+    st.markdown(
+        """
+        <div style="
+            background:#0c1b2b;
+            border:1px solid #203d57;
+            border-radius:12px;
+            padding:22px;
+            text-align:center;
+            color:#b8c9dc;
+            line-height:2.2;
+        ">
+            Python &nbsp; | &nbsp;
+            FastAPI &nbsp; | &nbsp;
+            Streamlit &nbsp; | &nbsp;
+            Ollama &nbsp; | &nbsp;
+            Llama 3.2 &nbsp; | &nbsp;
+            SQLAlchemy &nbsp; | &nbsp;
+            SQLite &nbsp; | &nbsp;
+            Pydantic
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    # Footer
+    st.markdown(
+        """
+        <div style="
+            text-align:center;
+            padding:35px 10px 15px 10px;
+            color:#8195ab;
+            font-size:13px;
+        ">
+            CyberTalk — Two Chatbots, One Agreement
+            <br>
+            AI-powered cybersecurity discussions and decision support.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
     # -------------------------
     # Centered Authentication Modal

@@ -25,12 +25,19 @@ class FrontendTests(unittest.TestCase):
             )
         )
 
-        self.assertTrue(
-            any(
-                "Two Chatbots, One Agreement"
-                in element.value
-                for element in app.subheader
-            )
+        page_content = " ".join(
+            element.value
+            for element in app.markdown
+        )
+
+        page_content += " ".join(
+            element.value
+            for element in app.html
+        )
+
+        self.assertIn(
+            "Two Chatbots, One Agreement",
+            page_content,
         )
 
     def test_about_page_contains_project_features(self):
@@ -43,15 +50,23 @@ class FrontendTests(unittest.TestCase):
             default_timeout=10,
         ).run()
 
-        page_text = " ".join(
+        page_html = " ".join(
             element.value
-            for element in app.markdown
+            for element in app.html
         )
 
-        self.assertIn("Stakeholder Dialogue", page_text)
-        self.assertIn("Cybersecurity Q&A", page_text)
-        self.assertIn("Agreement Evaluation", page_text)
-        self.assertIn("Chat History", page_text)
+        expected_features = [
+            "Stakeholder Dialogue",
+            "Cybersecurity Q&amp;A",
+            "Agreement Evaluation",
+            "Conversation History",
+            "Configurable Discussions",
+        ]
+
+        for feature in expected_features:
+            with self.subTest(feature=feature):
+                self.assertIn(feature, page_html)
+
     def run_authenticated_app(self, history_records=None, history_detail=None):
         """Start the frontend with a mocked authenticated user."""
 
