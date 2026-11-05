@@ -388,3 +388,148 @@ def test_invalid_admin_role_is_rejected():
     )
 
     assert response.status_code == 422
+def test_admin_can_view_audit_logs():
+    admin = create_test_user()
+    promote_to_admin(admin["id"])
+
+    token = create_token(admin["id"])
+
+    response = client.get(
+        "/admin/audit-logs",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_role_change_creates_audit_record():
+    admin = create_test_user()
+    promote_to_admin(admin["id"])
+
+    target = create_test_user(
+    username="audit_target",
+    email="audit_target@example.com",
+    )
+    token = create_token(admin["id"])
+
+    update_response = client.patch(
+        f"/admin/users/{target['id']}/role",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": "admin"},
+    )
+
+    assert update_response.status_code == 200
+
+    response = client.get(
+        "/admin/audit-logs",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+
+    logs = response.json()
+    assert len(logs) == 1
+
+    audit = logs[0]
+    assert audit["actor_user_id"] == admin["id"]
+    assert audit["target_user_id"] == target["id"]
+    assert audit["action"] == "role_changed"
+    assert audit["previous_role"] == "user"
+    assert audit["new_role"] == "admin"
+
+
+def test_regular_user_cannot_view_audit_logs():
+    user = create_test_user()
+    token = create_token(user["id"])
+
+    response = client.get(
+        "/admin/audit-logs",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_audit_logs_require_authentication():
+    response = client.get("/admin/audit-logs")
+
+    assert response.status_code == 401
+
+
+def test_audit_logs_are_ordered_newest_first():
+    admin = create_test_user()
+    promote_to_admin(admin["id"])
+
+    target = create_test_user(
+    username="audit_order_target",
+    email="audit_order_target@example.com",
+    )
+    token = create_token(admin["id"])
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # First change: user -> admin
+    first_update = client.patch(
+        f"/admin/users/{target['id']}/role",
+        headers=headers,
+        json={"role": "admin"},
+    )
+    assert first_update.status_code == 200
+
+    # Second change: admin -> user
+    second_update = client.patch(
+        f"/admin/users/{target['id']}/role",
+        headers=headers,
+        json={"role": "user"},
+    )
+    assert second_update.status_code == 200
+
+    response = client.get(
+        "/admin/audit-logs",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+
+    logs = response.json()
+    assert len(logs) == 2
+
+    assert logs[0]["previous_role"] == "admin"
+    assert logs[0]["new_role"] == "user"
+
+    assert logs[1]["previous_role"] == "user"
+    assert logs[1]["new_role"] == "admin"
+
+    assert logs[0]["id"] > logs[1]["id"]
+def test_unchanged_role_does_not_create_audit_record():
+    admin = create_test_user(
+        username="noop_admin",
+        email="noop_admin@example.com",
+    )
+    promote_to_admin(admin["id"])
+
+    target = create_test_user(
+        username="noop_target",
+        email="noop_target@example.com",
+    )
+
+    token = create_token(admin["id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Request the role the target already has.
+    update_response = client.patch(
+        f"/admin/users/{target['id']}/role",
+        headers=headers,
+        json={"role": "user"},
+    )
+
+    assert update_response.status_code == 200
+
+    audit_response = client.get(
+        "/admin/audit-logs",
+        headers=headers,
+    )
+
+    assert audit_response.status_code == 200
+    assert audit_response.json() == []

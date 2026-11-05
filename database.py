@@ -3,7 +3,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-
+from sqlalchemy import inspect, text
 
 # Get the current project directory
 BASE_DIR = Path(__file__).resolve().parent
@@ -53,5 +53,38 @@ def create_db_tables():
     import chat_history_model
     import password_reset_model
     import share_link_model
+    import audit_log_model
 
     Base.metadata.create_all(bind=engine)
+
+def migrate_user_account_lifecycle():
+    """Add account lifecycle columns to existing users table."""
+
+    inspector = inspect(engine)
+
+    if "users" not in inspector.get_table_names():
+        return
+
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("users")
+    }
+
+    with engine.begin() as connection:
+
+        if "is_active" not in existing_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN is_active BOOLEAN "
+                    "NOT NULL DEFAULT 1"
+                )
+            )
+
+        if "deactivated_at" not in existing_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN deactivated_at DATETIME"
+                )
+            )

@@ -1,5 +1,4 @@
-
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, Integer, String, Boolean
 from sqlalchemy.sql import func
 
 from database import Base
@@ -10,22 +9,45 @@ class User(Base):
 
     __tablename__ = "users"
 
-    # Unique user identifier
     id = Column(Integer, primary_key=True, index=True)
 
-    # User account details
-    username = Column(String(50), unique=True, nullable=False, index=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
+    username = Column(
+        String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
 
-    # Store the hashed password, never the original password
+    email = Column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
     hashed_password = Column(String(255), nullable=False)
 
-    # User permissions
-    role = Column(String(20), nullable=False, default="user")
+    role = Column(
+        String(20),
+        nullable=False,
+        default="user",
+    )
 
-    # Account creation timestamp
+    # Account lifecycle management
+    is_active = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="1",
+    )
+
+    deactivated_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
-        nullable=False
+        nullable=False,
     )

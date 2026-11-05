@@ -3,8 +3,10 @@ import secrets
 import logging
 import time
 import httpx
+from streamlit import user
 from email_service import send_password_reset_email
 from datetime import datetime, timedelta, timezone
+from pydantic import ConfigDict
 from typing import Literal
 from fastapi import (
     FastAPI,
@@ -33,8 +35,16 @@ from fastapi import (
 )
 
 from auth import create_access_token, decode_access_token
-from database import get_db, create_db_tables
+
+from database import (
+    get_db,
+    create_db_tables,
+    migrate_user_account_lifecycle,
+)
+
 from user_model import User
+from user_model import User
+from audit_log_model import AuditLog
 from chat_history_model import ChatHistory
 from share_link_model import ShareLink
 from security import (
@@ -166,6 +176,24 @@ class UserProfileResponse(BaseModel):
     created_at: datetime
 # JWT bearer authentication
 security = HTTPBearer(auto_error=False)
+
+class AdminRoleUpdateRequest(BaseModel):
+    role: Literal["user", "admin"]
+
+class AuditLogResponse(BaseModel):
+    """Safe response model for administrator audit records."""
+
+    id: int
+    actor_user_id: int
+    actor_username: str
+    target_user_id: int
+    target_username: str
+    action: str
+    previous_role: str
+    new_role: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 class UserProfileUpdateRequest(BaseModel):
     username: str = Field(min_length=3, max_length=50)
@@ -302,8 +330,27 @@ def get_current_user(
             detail="Authenticated user not found.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This account has been deactivated. Please contact an administrator.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
+
+def require_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Allow access only to authenticated administrators."""
+
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator privileges are required.",
+        )
+
+    return current_user
+
 class ChatRequest(BaseModel):
     message: str
 
@@ -341,7 +388,7 @@ class DialogueRequest(BaseModel):
 @app.on_event("startup")
 def startup_event():
     create_db_tables()
-
+    migrate_user_account_lifecycle()
 
 @app.post("/register", status_code=status.HTTP_201_CREATED)
 def register_user(
@@ -427,7 +474,12 @@ def login_user(
             detail="Invalid username/email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated. Please contact an administrator.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     # Generate a JWT access token.
     access_token = create_access_token(
         data={
@@ -730,6 +782,160 @@ def update_my_profile(
         )
 
     return current_user
+
+@app.get(
+    "/admin/users",
+    response_model=list[UserProfileResponse],
+)
+def get_all_users(
+    search: str | None = None,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Return registered users, optionally filtered by username or email."""
+
+    query = db.query(User)
+
+    if search and search.strip():
+        search_pattern = f"%{search.strip()}%"
+
+        query = query.filter(
+            User.username.ilike(search_pattern)
+            | User.email.ilike(search_pattern)
+        )
+
+    return query.order_by(User.id.asc()).all()
+
+@app.get(
+    "/admin/audit-logs",
+    response_model=list[AuditLogResponse],
+)
+def get_admin_audit_logs(
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Return the latest administrator audit records."""
+
+    audit_logs = (
+        db.query(AuditLog)
+        .order_by(
+            AuditLog.created_at.desc(),
+            AuditLog.id.desc(),
+        )
+        .limit(100)
+        .all()
+    )
+
+    return audit_logs
+
+@app.get(
+    "/admin/users/{user_id}",
+    response_model=UserProfileResponse,
+)
+def get_admin_user_details(
+    user_id: int,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Return safe account details for one user."""
+
+    user = db.query(User).filter(
+        User.id == user_id
+    ).first()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    return user
+
+@app.patch("/admin/users/{user_id}/role")
+def update_user_role(
+    user_id: int,
+    request: AdminRoleUpdateRequest,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update a user's role and record the administrator action."""
+
+    target_user = db.query(User).filter(
+        User.id == user_id
+    ).first()
+
+    if target_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+    # Never allow a role change to leave zero administrators.
+    if (
+        target_user.role == "admin"
+        and request.role == "user"
+    ):
+        admin_count = db.query(User).filter(
+            User.role == "admin"
+        ).count()
+
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The last administrator cannot be demoted.",
+            )
+
+
+    # Administrators cannot change their own roles.
+    if target_user.id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Administrators cannot change their own role.",
+        )
+
+    # Avoid unnecessary updates and audit entries.
+    if target_user.role == request.role:
+        return {
+            "message": "User already has the requested role.",
+            "user": UserProfileResponse.model_validate(target_user),
+        }
+
+    previous_role = target_user.role
+    # Prepare the audit record using authenticated and database values.
+    audit_record = AuditLog(
+        actor_user_id=current_admin.id,
+        actor_username=current_admin.username,
+        target_user_id=target_user.id,
+        target_username=target_user.username,
+        action="role_changed",
+        previous_role=previous_role,
+        new_role=request.role,
+    )
+
+    try:
+        target_user.role = request.role
+        db.add(audit_record)
+
+        # Save the role update and audit record together.
+        db.commit()
+        db.refresh(target_user)
+
+    except Exception:
+        db.rollback()
+
+        logger.exception(
+            "Failed to update a user role or save its audit record."
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to update the user role. Please try again.",
+        )
+
+    return {
+        "message": "User role updated successfully.",
+        "user": UserProfileResponse.model_validate(target_user),
+    }
+
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
