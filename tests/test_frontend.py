@@ -67,7 +67,14 @@ class FrontendTests(unittest.TestCase):
             with self.subTest(feature=feature):
                 self.assertIn(feature, page_html)
 
-    def run_authenticated_app(self, history_records=None, history_detail=None):
+    def run_authenticated_app(
+    self,
+    history_records=None,
+    history_detail=None,
+    role="user",
+    admin_users=None,
+    admin_detail=None,
+    ):
         """Start the frontend with a mocked authenticated user."""
 
         app = AppTest.from_file(
@@ -84,9 +91,22 @@ class FrontendTests(unittest.TestCase):
             "id": 1,
             "username": "testuser",
             "email": "test@example.com",
-            "role": "user",
+            "role": role,
+            "created_at": "2026-01-01T00:00:00",
         }
+        admin_users_response = Mock()
+        admin_users_response.ok = True
+        admin_users_response.status_code = 200
+        admin_users_response.json.return_value = (
+            admin_users if admin_users is not None else []
+        )
 
+        admin_detail_response = Mock()
+        admin_detail_response.ok = True
+        admin_detail_response.status_code = 200
+        admin_detail_response.json.return_value = (
+            admin_detail if admin_detail is not None else {}
+        )
         history_response = Mock()
         history_response.ok = True
         history_response.status_code = 200
@@ -105,6 +125,12 @@ class FrontendTests(unittest.TestCase):
             if url.endswith("/users/me"):
                 return profile_response
 
+            if url.endswith("/admin/users"):
+                return admin_users_response
+
+            if "/admin/users/" in url:
+                return admin_detail_response
+
             if "/history/" in url:
                 return detail_response
 
@@ -112,7 +138,6 @@ class FrontendTests(unittest.TestCase):
                 return history_response
 
             raise AssertionError(f"Unexpected GET request: {url}")
-
         get_patcher = patch(
             "requests.get",
             side_effect=mock_get

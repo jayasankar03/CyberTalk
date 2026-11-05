@@ -325,6 +325,35 @@ def get_auth_headers():
     token = st.session_state.get("access_token")
     return {"Authorization": f"Bearer {token}"}
 
+def fetch_admin_users(search=""):
+    """Retrieve users through the protected administrator API."""
+    params = {"search": search} if search.strip() else None
+
+    return requests.get(
+        f"{API_URL}/admin/users",
+        headers=get_auth_headers(),
+        params=params,
+        timeout=15,
+    )
+
+
+def fetch_admin_user_details(user_id):
+    """Retrieve one user's safe account details."""
+    return requests.get(
+        f"{API_URL}/admin/users/{user_id}",
+        headers=get_auth_headers(),
+        timeout=15,
+    )
+
+
+def update_admin_user_role(user_id, role):
+    """Update another user's role through the protected API."""
+    return requests.patch(
+        f"{API_URL}/admin/users/{user_id}/role",
+        headers=get_auth_headers(),
+        json={"role": role},
+        timeout=15,
+    )
 
 # -----------------------------
 # Chat history helper functions
@@ -1366,6 +1395,291 @@ st.sidebar.caption(
     f"Role: {current_user.get('role', 'user')}"
 )
 
+
+# -----------------------------
+# Administrator Dashboard
+# -----------------------------
+
+st.session_state.setdefault("show_admin_dashboard", False)
+
+is_admin = current_user.get("role") == "admin"
+
+if is_admin:
+    if st.sidebar.button(
+        "Admin Dashboard",
+        key="open_admin_dashboard",
+        use_container_width=True,
+    ):
+        st.session_state["show_admin_dashboard"] = (
+            not st.session_state["show_admin_dashboard"]
+        )
+        st.session_state["show_profile"] = False
+        st.rerun()
+
+if st.session_state["show_admin_dashboard"]:
+
+    if not is_admin:
+        st.session_state["show_admin_dashboard"] = False
+        st.error("Administrator privileges are required.")
+        st.stop()
+
+    if st.button("Back to Chat", key="admin_back_to_chat"):
+        st.session_state["show_admin_dashboard"] = False
+        st.rerun()
+
+    st.title("Admin Dashboard")
+    st.write(
+        "Review registered CyberTalk accounts and manage account roles."
+    )
+    st.divider()
+
+    if st.session_state.pop("admin_role_update_success", False):
+        st.success("User role updated successfully.")
+
+    try:
+        admin_search = st.text_input(
+            "Search users",
+            placeholder="Search by username or email",
+            key="admin_user_search",
+        )
+
+        users_response = fetch_admin_users(admin_search)
+
+        if users_response.status_code == 401:
+            st.error("Your session has expired. Please sign in again.")
+            st.session_state["access_token"] = None
+            st.session_state["show_admin_dashboard"] = False
+            st.stop()
+
+        if users_response.status_code == 403:
+            st.error("Administrator privileges are required.")
+            st.session_state["show_admin_dashboard"] = False
+            st.stop()
+
+        if not users_response.ok:
+            st.error(
+                "Could not load registered users: "
+                f"{get_api_error(users_response)}"
+            )
+            st.stop()
+
+        admin_users = users_response.json()
+
+        if not isinstance(admin_users, list):
+            st.error("The API returned an invalid user list.")
+            st.stop()
+
+        total_users = len(admin_users)
+
+        admin_count = sum(
+            1 for user in admin_users
+            if user.get("role") == "admin"
+        )
+
+        regular_count = sum(
+            1 for user in admin_users
+            if user.get("role") == "user"
+        )
+
+        metric_columns = st.columns(3)
+
+        metric_columns[0].metric(
+            "Users in results",
+            total_users,
+        )
+
+        metric_columns[1].metric(
+            "Administrators",
+            admin_count,
+        )
+
+        metric_columns[2].metric(
+            "Regular users",
+            regular_count,
+        )
+
+        st.subheader("Registered Users")
+
+        if admin_users:
+
+            display_users = [
+                {
+                    "User ID": user.get("id"),
+                    "Username": user.get("username"),
+                    "Email": user.get("email"),
+                    "Role": str(
+                        user.get("role", "user")
+                    ).title(),
+                    "Registered": user.get(
+                        "created_at",
+                        "N/A",
+                    ),
+                }
+                for user in admin_users
+            ]
+
+            st.dataframe(
+                display_users,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            user_options = {
+                (
+                    f"{user.get('username', 'Unknown')} "
+                    f"({user.get('email', 'No email')}) — "
+                    f"ID {user.get('id')}"
+                ): user.get("id")
+                for user in admin_users
+            }
+
+            st.subheader("User Details and Role Management")
+
+            selected_label = st.selectbox(
+                "Select a user",
+                options=list(user_options.keys()),
+                key="admin_selected_user",
+            )
+
+            selected_user_id = user_options[selected_label]
+
+            details_response = fetch_admin_user_details(
+                selected_user_id
+            )
+
+            if details_response.status_code == 401:
+                st.error(
+                    "Your session has expired. Please sign in again."
+                )
+                st.session_state["access_token"] = None
+                st.session_state["show_admin_dashboard"] = False
+                st.stop()
+
+            elif details_response.status_code == 403:
+                st.error("Administrator privileges are required.")
+                st.session_state["show_admin_dashboard"] = False
+                st.stop()
+
+            elif details_response.status_code == 404:
+                st.warning("This user account no longer exists.")
+
+            elif not details_response.ok:
+                st.error(
+                    "Could not load user details: "
+                    f"{get_api_error(details_response)}"
+                )
+
+            else:
+                selected_user = details_response.json()
+
+                detail_columns = st.columns(2)
+
+                with detail_columns[0]:
+                    st.write("**User ID**")
+                    st.write(selected_user.get("id", "N/A"))
+
+                    st.write("**Username**")
+                    st.write(selected_user.get("username", "N/A"))
+
+                with detail_columns[1]:
+                    st.write("**Email**")
+                    st.write(selected_user.get("email", "N/A"))
+
+                    st.write("**Current role**")
+                    st.write(
+                        str(
+                            selected_user.get("role", "user")
+                        ).title()
+                    )
+
+                st.caption(
+                    "Registration date: "
+                    f"{selected_user.get('created_at', 'Not available')}"
+                )
+
+                if selected_user.get("id") == current_user.get("id"):
+
+                    st.info(
+                        "You cannot change your own administrator role."
+                    )
+
+                else:
+                    current_role = selected_user.get("role", "user")
+
+                    desired_role = st.selectbox(
+                        "Change account role",
+                        options=["user", "admin"],
+                        index=0 if current_role == "user" else 1,
+                        format_func=lambda value: value.title(),
+                        key=f"admin_role_choice_{selected_user_id}",
+                    )
+
+                    if desired_role == current_role:
+                        st.caption(
+                            "The selected account already has this role."
+                        )
+
+                    elif st.button(
+                        f"Update role to {desired_role.title()}",
+                        key=f"admin_update_role_{selected_user_id}",
+                        type="primary",
+                    ):
+
+                        try:
+                            role_response = update_admin_user_role(
+                                selected_user_id,
+                                desired_role,
+                            )
+
+                            if role_response.status_code == 401:
+                                st.error(
+                                    "Your session has expired. "
+                                    "Please sign in again."
+                                )
+                                st.session_state["access_token"] = None
+                                st.session_state[
+                                    "show_admin_dashboard"
+                                ] = False
+                                st.stop()
+
+                            elif role_response.status_code == 403:
+                                st.error(
+                                    "Administrator privileges are required."
+                                )
+
+                            elif role_response.status_code == 409:
+                                st.warning(
+                                    get_api_error(role_response)
+                                )
+
+                            elif role_response.ok:
+                                st.session_state[
+                                    "admin_role_update_success"
+                                ] = True
+                                st.rerun()
+
+                            else:
+                                st.error(
+                                    "Could not update the user role: "
+                                    f"{get_api_error(role_response)}"
+                                )
+
+                        except requests.exceptions.RequestException:
+                            st.error(
+                                "Unable to update the user role. "
+                                "Check the API connection and try again."
+                            )
+
+        else:
+            st.info("No registered users match your search.")
+
+    except requests.exceptions.RequestException:
+        st.error(
+            "Unable to connect to the administrator API. "
+            "Please check that the CyberTalk API is running."
+        )
+
+    st.stop()
 
 
 # -----------------------------
