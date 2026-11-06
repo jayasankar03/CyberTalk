@@ -88,3 +88,56 @@ def migrate_user_account_lifecycle():
                     "ADD COLUMN deactivated_at DATETIME"
                 )
             )
+def migrate_audit_log_account_status():
+    """Add account status fields to existing audit logs."""
+
+    inspector = inspect(engine)
+
+    if "audit_logs" not in inspector.get_table_names():
+        return
+
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("audit_logs")
+    }
+
+    with engine.begin() as connection:
+
+        if "previous_status" not in existing_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE audit_logs "
+                    "ADD COLUMN previous_status VARCHAR(20)"
+                )
+            )
+
+        if "new_status" not in existing_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE audit_logs "
+                    "ADD COLUMN new_status VARCHAR(20)"
+                )
+            )
+
+def migrate_primary_admin():
+    """Add primary administrator designation to existing users."""
+
+    inspector = inspect(engine)
+
+    if "users" not in inspector.get_table_names():
+        return
+
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("users")
+    }
+
+    if "is_primary_admin" not in existing_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN is_primary_admin BOOLEAN "
+                    "NOT NULL DEFAULT 0"
+                )
+            )

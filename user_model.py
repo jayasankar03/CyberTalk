@@ -1,3 +1,4 @@
+
 from sqlalchemy import Column, DateTime, Integer, String, Boolean
 from sqlalchemy.sql import func
 
@@ -44,6 +45,14 @@ class User(Base):
     deactivated_at = Column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    # Protected primary administrator designation
+    is_primary_admin = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
     )
 
     created_at = Column(

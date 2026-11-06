@@ -1,6 +1,7 @@
 
 import json
 import os
+from datetime import datetime, timezone, timedelta
 
 import requests
 import streamlit as st
@@ -325,6 +326,37 @@ def get_auth_headers():
     token = st.session_state.get("access_token")
     return {"Authorization": f"Bearer {token}"}
 
+def fetch_admin_audit_logs():
+    """Retrieve administrator audit records."""
+    return requests.get(
+        f"{API_URL}/admin/audit-logs",
+        headers=get_auth_headers(),
+        timeout=15,
+    )
+
+def format_audit_timestamp(value):
+    """Convert an API audit timestamp from UTC to Indian Standard Time."""
+    if not value:
+        return "N/A"
+
+    try:
+        timestamp = datetime.fromisoformat(
+            value.replace("Z", "+00:00")
+        )
+
+        # SQLite timestamps may arrive without timezone information.
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+
+        ist = timezone(timedelta(hours=5, minutes=30))
+
+        return timestamp.astimezone(ist).strftime(
+            "%d %b %Y, %I:%M:%S %p IST"
+        )
+
+    except (ValueError, TypeError, AttributeError):
+        return str(value)
+
 def fetch_admin_users(search=""):
     """Retrieve users through the protected administrator API."""
     params = {"search": search} if search.strip() else None
@@ -354,6 +386,59 @@ def update_admin_user_role(user_id, role):
         json={"role": role},
         timeout=15,
     )
+
+def deactivate_admin_user(user_id):
+    """Deactivate a user account through the admin API."""
+
+    try:
+        response = requests.patch(
+            f"{API_URL}/admin/users/{user_id}/deactivate",
+            headers=get_auth_headers(),
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            return True, response.json().get(
+                "message",
+                "User account deactivated successfully.",
+            )
+
+        try:
+            detail = response.json().get("detail", "Unable to deactivate account.")
+        except ValueError:
+            detail = "Unable to deactivate account."
+
+        return False, detail
+
+    except requests.RequestException:
+        return False, "Unable to connect to the CyberTalk API."
+
+
+def reactivate_admin_user(user_id):
+    """Reactivate a previously deactivated user account."""
+
+    try:
+        response = requests.patch(
+            f"{API_URL}/admin/users/{user_id}/reactivate",
+            headers=get_auth_headers(),
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            return True, response.json().get(
+                "message",
+                "User account reactivated successfully.",
+            )
+
+        try:
+            detail = response.json().get("detail", "Unable to reactivate account.")
+        except ValueError:
+            detail = "Unable to reactivate account."
+
+        return False, detail
+
+    except requests.RequestException:
+        return False, "Unable to connect to the CyberTalk API."
 
 # -----------------------------
 # Chat history helper functions
@@ -1469,36 +1554,57 @@ if st.session_state["show_admin_dashboard"]:
             st.error("The API returned an invalid user list.")
             st.stop()
 
-        total_users = len(admin_users)
+                # Keep the complete search result for account metrics.
+        all_admin_users = admin_users
+
+        total_users = len(all_admin_users)
 
         admin_count = sum(
-            1 for user in admin_users
+            1 for user in all_admin_users
             if user.get("role") == "admin"
         )
 
         regular_count = sum(
-            1 for user in admin_users
+            1 for user in all_admin_users
             if user.get("role") == "user"
         )
 
-        metric_columns = st.columns(3)
-
-        metric_columns[0].metric(
-            "Users in results",
-            total_users,
+        active_users = sum(
+            1 for user in all_admin_users
+            if user.get("is_active", False)
         )
 
-        metric_columns[1].metric(
-            "Administrators",
-            admin_count,
-        )
+        inactive_users = total_users - active_users
 
-        metric_columns[2].metric(
-            "Regular users",
-            regular_count,
-        )
+        metric_columns = st.columns(5)
+
+        metric_columns[0].metric("Users in Results", total_users)
+        metric_columns[1].metric("Active Accounts", active_users)
+        metric_columns[2].metric("Inactive Accounts", inactive_users)
+        metric_columns[3].metric("Administrators", admin_count)
+        metric_columns[4].metric("Regular Users", regular_count)
 
         st.subheader("Registered Users")
+
+        status_filter = st.selectbox(
+            "Filter by Account Status",
+            options=["All Accounts", "Active", "Inactive"],
+            key="admin_account_status_filter",
+        )
+
+        if status_filter == "Active":
+            admin_users = [
+                user for user in all_admin_users
+                if user.get("is_active", False)
+            ]
+
+        elif status_filter == "Inactive":
+            admin_users = [
+                user for user in all_admin_users
+                if not user.get("is_active", False)
+            ]
+        else:
+            admin_users = all_admin_users
 
         if admin_users:
 
@@ -1510,6 +1616,16 @@ if st.session_state["show_admin_dashboard"]:
                     "Role": str(
                         user.get("role", "user")
                     ).title(),
+                    "Account Status": (
+                        "Active"
+                        if user.get("is_active", False)
+                        else "Inactive"
+                    ),
+                    "Primary Admin": (
+                        "Yes"
+                        if user.get("is_primary_admin", False)
+                        else "No"
+                    ),
                     "Registered": user.get(
                         "created_at",
                         "N/A",
@@ -1517,7 +1633,6 @@ if st.session_state["show_admin_dashboard"]:
                 }
                 for user in admin_users
             ]
-
             st.dataframe(
                 display_users,
                 use_container_width=True,
@@ -1669,9 +1784,167 @@ if st.session_state["show_admin_dashboard"]:
                                 "Unable to update the user role. "
                                 "Check the API connection and try again."
                             )
+                st.divider()
+                st.subheader("Account Lifecycle Management")
 
+                account_is_active = selected_user.get(
+                    "is_active",
+                    False,
+                )
+
+                is_primary_admin = selected_user.get(
+                    "is_primary_admin",
+                    False,
+                )
+
+                if account_is_active:
+                    st.success("Account Status: Active")
+
+                    if is_primary_admin:
+                        st.info(
+                            "The primary administrator account "
+                            "cannot be deactivated."
+                        )
+
+                    elif selected_user.get("id") == current_user.get("id"):
+                        st.info(
+                            "You cannot deactivate your own account."
+                        )
+
+                    else:
+                        confirm_deactivation = st.checkbox(
+                            "I confirm that I want to deactivate this account.",
+                            key=f"confirm_deactivation_{selected_user_id}",
+                        )
+
+                        if st.button(
+                            "Deactivate Account",
+                            key=f"deactivate_user_{selected_user_id}",
+                            type="primary",
+                            disabled=not confirm_deactivation,
+                        ):
+                            try:
+                                success, message = deactivate_admin_user(
+                                    selected_user_id
+                                )
+
+                                if success:
+                                    st.success(message)
+                                    st.rerun()
+                                else:
+                                    st.error(message)
+
+                            except requests.exceptions.RequestException:
+                                st.error(
+                                    "Unable to deactivate the account. "
+                                    "Please check the API connection."
+                                )
+
+                else:
+                    st.warning("Account Status: Inactive")
+
+                    if st.button(
+                        "Reactivate Account",
+                        key=f"reactivate_user_{selected_user_id}",
+                    ):
+                        try:
+                            success, message = reactivate_admin_user(
+                                selected_user_id
+                            )
+
+                            if success:
+                                st.success(message)
+                                st.rerun()
+                            else:
+                                st.error(message)
+
+                        except requests.exceptions.RequestException:
+                            st.error(
+                                "Unable to reactivate the account. "
+                                "Please check the API connection."
+                            )
+
+                deactivated_at = selected_user.get("deactivated_at")
+
+                if deactivated_at:
+                    st.caption(
+                        f"Deactivated At: {deactivated_at}"
+                    )
         else:
             st.info("No registered users match your search.")
+
+        # -----------------------------
+        # Administrator Audit History
+        # -----------------------------
+
+        st.divider()
+        st.subheader("Audit History")
+
+        audit_response = fetch_admin_audit_logs()
+
+        if audit_response.status_code == 401:
+            st.error(
+                "Your session has expired. Please sign in again."
+            )
+            st.session_state["access_token"] = None
+            st.session_state["show_admin_dashboard"] = False
+            st.stop()
+
+        elif audit_response.status_code == 403:
+            st.error("Administrator privileges are required.")
+            st.session_state["show_admin_dashboard"] = False
+            st.stop()
+
+        elif not audit_response.ok:
+            st.error(
+                "Could not load audit history: "
+                f"{get_api_error(audit_response)}"
+            )
+
+        else:
+            audit_records = audit_response.json()
+
+            if not isinstance(audit_records, list):
+                st.error("The API returned an invalid audit history.")
+            elif not audit_records:
+                st.info("No administrator activity has been recorded yet.")
+            else:
+                display_audit_logs = [
+                    {
+                        "Administrator": record.get(
+                            "actor_username", "Unknown"
+                        ),
+                        "Affected User": record.get(
+                            "target_username", "Unknown"
+                        ),
+                        "Action": record.get(
+                            "action", "Unknown"
+                        ).replace("_", " ").title(),
+                        "Role Change": (
+                            f"{record.get('previous_role', 'N/A')} → "
+                            f"{record.get('new_role', 'N/A')}"
+                        ),
+                        "Account Status": (
+                            f"{record.get('previous_status') or 'N/A'} → "
+                            f"{record.get('new_status') or 'N/A'}"
+                        ),
+                        "Timestamp": record.get(
+                            "created_at", "N/A"
+                        ),
+                    }
+                    for record in audit_records
+                ]
+
+                st.dataframe(
+                    display_audit_logs,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.caption(
+                    f"Showing the latest {len(audit_records)} "
+                    "administrator activity records."
+                )
 
     except requests.exceptions.RequestException:
         st.error(

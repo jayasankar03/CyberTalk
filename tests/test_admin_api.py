@@ -14,7 +14,7 @@ from main import app
 from auth import create_access_token
 from database import get_db, Base
 from user_model import User
-
+from chat_history_model import ChatHistory
 
 # Create an isolated in-memory test database.
 engine = create_engine(
@@ -97,6 +97,21 @@ def promote_to_admin(user_id):
     finally:
         db.close()
 
+def promote_to_primary_admin(user_id):
+    db = TestingSessionLocal()
+
+    try:
+        user = db.query(User).filter(
+            User.id == user_id
+        ).first()
+
+        user.role = "admin"
+        user.is_primary_admin = True
+
+        db.commit()
+
+    finally:
+        db.close()
 
 def test_admin_can_list_all_users():
     admin = create_test_user(
@@ -533,3 +548,568 @@ def test_unchanged_role_does_not_create_audit_record():
 
     assert audit_response.status_code == 200
     assert audit_response.json() == []
+
+def test_admin_can_deactivate_user():
+    admin = create_test_user("adminuser", "admin@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    promote_to_admin(admin["id"])
+
+    token = create_token(admin["id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+
+    user = response.json()["user"]
+    assert user["id"] == target["id"]
+    assert user["is_active"] is False
+    assert user["deactivated_at"] is not None
+
+
+def test_admin_can_reactivate_user():
+    admin = create_test_user("adminuser", "admin@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    promote_to_admin(admin["id"])
+
+    token = create_token(admin["id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    deactivate_response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers=headers,
+    )
+    assert deactivate_response.status_code == 200
+
+    reactivate_response = client.patch(
+        f"/admin/users/{target['id']}/reactivate",
+        headers=headers,
+    )
+
+    assert reactivate_response.status_code == 200
+
+    user = reactivate_response.json()["user"]
+    assert user["id"] == target["id"]
+    assert user["is_active"] is True
+    assert user["deactivated_at"] is None
+
+
+def test_deactivation_creates_audit_record():
+    admin = create_test_user("adminuser", "admin@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    promote_to_admin(admin["id"])
+
+    token = create_token(admin["id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+
+    audit_response = client.get(
+        "/admin/audit-logs",
+        headers=headers,
+    )
+
+    assert audit_response.status_code == 200
+
+    logs = audit_response.json()
+    assert len(logs) == 1
+
+    audit = logs[0]
+
+    assert audit["actor_user_id"] == admin["id"]
+    assert audit["target_user_id"] == target["id"]
+    assert audit["action"] == "account_deactivated"
+    assert audit["previous_role"] == "user"
+    assert audit["new_role"] == "user"
+    assert audit["previous_status"] == "active"
+    assert audit["new_status"] == "inactive"
+
+
+def test_reactivation_creates_audit_record():
+    admin = create_test_user("adminuser", "admin@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    promote_to_admin(admin["id"])
+
+    token = create_token(admin["id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers=headers,
+    )
+
+    response = client.patch(
+        f"/admin/users/{target['id']}/reactivate",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+
+    audit_response = client.get(
+        "/admin/audit-logs",
+        headers=headers,
+    )
+
+    assert audit_response.status_code == 200
+
+    logs = audit_response.json()
+    assert len(logs) == 2
+
+    audit = logs[0]
+
+    assert audit["actor_user_id"] == admin["id"]
+    assert audit["target_user_id"] == target["id"]
+    assert audit["action"] == "account_reactivated"
+    assert audit["previous_status"] == "inactive"
+    assert audit["new_status"] == "active"
+
+
+def test_admin_cannot_deactivate_own_account():
+    admin = create_test_user("adminuser", "admin@example.com")
+    promote_to_admin(admin["id"])
+
+    token = create_token(admin["id"])
+
+    response = client.patch(
+        f"/admin/users/{admin['id']}/deactivate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Administrators cannot deactivate their own accounts."
+    )
+
+
+def test_admin_can_deactivate_another_admin():
+    admin = create_test_user("adminuser", "admin@example.com")
+    second_admin = create_test_user(
+        "secondadmin",
+        "second@example.com",
+    )
+
+    promote_to_admin(admin["id"])
+    promote_to_admin(second_admin["id"])
+
+    token = create_token(admin["id"])
+
+    response = client.patch(
+        f"/admin/users/{second_admin['id']}/deactivate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["is_active"] is False
+
+    # The requesting administrator remains active.
+    me_response = client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert me_response.status_code == 200
+
+
+def test_deactivated_user_existing_token_is_rejected():
+    admin = create_test_user("adminuser", "admin@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    promote_to_admin(admin["id"])
+
+    admin_token = create_token(admin["id"])
+    target_token = create_token(target["id"])
+
+    deactivate_response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert deactivate_response.status_code == 200
+
+    protected_response = client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {target_token}"},
+    )
+
+    assert protected_response.status_code == 401
+    assert protected_response.json()["detail"] == (
+        "This account has been deactivated. Please contact an administrator."
+    )
+
+
+def test_normal_user_cannot_deactivate_or_reactivate_users():
+    user = create_test_user("normaluser", "normal@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    token = create_token(user["id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    deactivate_response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers=headers,
+    )
+
+    reactivate_response = client.patch(
+        f"/admin/users/{target['id']}/reactivate",
+        headers=headers,
+    )
+
+    assert deactivate_response.status_code == 403
+    assert reactivate_response.status_code == 403
+
+
+def test_deactivate_and_reactivate_require_authentication():
+    target = create_test_user()
+
+    deactivate_response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+    )
+
+    reactivate_response = client.patch(
+        f"/admin/users/{target['id']}/reactivate",
+    )
+
+    assert deactivate_response.status_code == 401
+    assert reactivate_response.status_code == 401
+
+
+def test_deactivate_and_reactivate_nonexistent_user():
+    admin = create_test_user("adminuser", "admin@example.com")
+    promote_to_admin(admin["id"])
+
+    token = create_token(admin["id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    deactivate_response = client.patch(
+        "/admin/users/99999/deactivate",
+        headers=headers,
+    )
+
+    reactivate_response = client.patch(
+        "/admin/users/99999/reactivate",
+        headers=headers,
+    )
+
+    assert deactivate_response.status_code == 404
+    assert reactivate_response.status_code == 404
+
+
+def test_deactivating_already_inactive_user_creates_no_duplicate_audit():
+    admin = create_test_user("adminuser", "admin@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    promote_to_admin(admin["id"])
+
+    token = create_token(admin["id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first_response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers=headers,
+    )
+
+    second_response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers=headers,
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+
+    audit_response = client.get(
+        "/admin/audit-logs",
+        headers=headers,
+    )
+
+    assert audit_response.status_code == 200
+    assert len(audit_response.json()) == 1
+
+
+def test_reactivating_already_active_user_creates_no_duplicate_audit():
+    admin = create_test_user("adminuser", "admin@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    promote_to_admin(admin["id"])
+
+    token = create_token(admin["id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first_response = client.patch(
+        f"/admin/users/{target['id']}/reactivate",
+        headers=headers,
+    )
+
+    assert first_response.status_code == 200
+
+    audit_response = client.get(
+        "/admin/audit-logs",
+        headers=headers,
+    )
+
+    assert audit_response.status_code == 200
+    assert audit_response.json() == []
+
+
+def test_other_admin_cannot_demote_primary_admin():
+    primary = create_test_user(
+        "jayasankar_03",
+        "jayasankar0426@gmail.com",
+    )
+
+    second_admin = create_test_user(
+        "secondadmin",
+        "second@example.com",
+    )
+
+    promote_to_primary_admin(primary["id"])
+    promote_to_admin(second_admin["id"])
+
+    token = create_token(second_admin["id"])
+
+    response = client.patch(
+        f"/admin/users/{primary['id']}/role",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": "user"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "The primary administrator cannot be demoted."
+    )
+
+    db = TestingSessionLocal()
+
+    try:
+        user = db.query(User).filter(
+            User.id == primary["id"]
+        ).first()
+
+        assert user.role == "admin"
+        assert user.is_primary_admin is True
+
+    finally:
+        db.close()
+
+
+def test_other_admin_cannot_deactivate_primary_admin():
+    primary = create_test_user(
+        "jayasankar_03",
+        "jayasankar0426@gmail.com",
+    )
+
+    second_admin = create_test_user(
+        "secondadmin",
+        "second@example.com",
+    )
+
+    promote_to_primary_admin(primary["id"])
+    promote_to_admin(second_admin["id"])
+
+    token = create_token(second_admin["id"])
+
+    response = client.patch(
+        f"/admin/users/{primary['id']}/deactivate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "The primary administrator cannot be deactivated."
+    )
+
+    db = TestingSessionLocal()
+
+    try:
+        user = db.query(User).filter(
+            User.id == primary["id"]
+        ).first()
+
+        assert user.is_active is True
+        assert user.role == "admin"
+        assert user.is_primary_admin is True
+
+    finally:
+        db.close()
+
+def test_primary_admin_can_promote_another_user():
+    primary = create_test_user(
+        "jayasankar_03",
+        "jayasankar0426@gmail.com",
+    )
+
+    target = create_test_user(
+        "targetuser",
+        "target@example.com",
+    )
+
+    promote_to_primary_admin(primary["id"])
+
+    token = create_token(primary["id"])
+
+    response = client.patch(
+        f"/admin/users/{target['id']}/role",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": "admin"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["role"] == "admin"
+
+
+def test_primary_admin_flag_is_returned_by_admin_api():
+    primary = create_test_user(
+        "jayasankar_03",
+        "jayasankar0426@gmail.com",
+    )
+
+    promote_to_primary_admin(primary["id"])
+
+    token = create_token(primary["id"])
+
+    response = client.get(
+        "/admin/users",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+
+    user = response.json()[0]
+
+    assert user["username"] == "jayasankar_03"
+    assert user["is_primary_admin"] is True
+
+def test_deactivation_preserves_user_chat_history():
+    admin = create_test_user("adminuser", "admin@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    promote_to_admin(admin["id"])
+
+    admin_headers = {
+        "Authorization": f"Bearer {create_token(admin['id'])}"
+    }
+    target_headers = {
+        "Authorization": f"Bearer {create_token(target['id'])}"
+    }
+
+    # Save a conversation before deactivation.
+    save_response = client.post(
+        "/history",
+        headers=target_headers,
+        json={
+            "conversation_type": "qa",
+            "title": "Phishing Security",
+            "content": '{"question": "What is phishing?"}',
+        },
+    )
+
+    assert save_response.status_code == 201
+    history_id = save_response.json()["id"]
+
+    # Deactivate the account.
+    deactivate_response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers=admin_headers,
+    )
+
+    assert deactivate_response.status_code == 200
+
+    # Verify the saved conversation still exists in the database.
+    db = TestingSessionLocal()
+
+    try:
+        history = db.query(ChatHistory).filter(
+            ChatHistory.id == history_id
+        ).first()
+
+        assert history is not None
+        assert history.user_id == target["id"]
+        assert history.title == "Phishing Security"
+        assert history.content == (
+            '{"question": "What is phishing?"}'
+        )
+    finally:
+        db.close()
+
+    # Reactivate the account.
+    reactivate_response = client.patch(
+        f"/admin/users/{target['id']}/reactivate",
+        headers=admin_headers,
+    )
+
+    assert reactivate_response.status_code == 200
+
+    # Verify the user can access the original conversation again.
+    history_response = client.get(
+        "/history",
+        headers=target_headers,
+    )
+
+    assert history_response.status_code == 200
+    assert len(history_response.json()) == 1
+    assert history_response.json()[0]["id"] == history_id
+    assert history_response.json()[0]["title"] == "Phishing Security"
+
+def test_reactivated_user_can_access_protected_endpoints():
+    admin = create_test_user("adminuser", "admin@example.com")
+    target = create_test_user("targetuser", "target@example.com")
+
+    promote_to_admin(admin["id"])
+
+    admin_headers = {
+        "Authorization": f"Bearer {create_token(admin['id'])}"
+    }
+
+    # Create a token before deactivation.
+    old_target_headers = {
+        "Authorization": f"Bearer {create_token(target['id'])}"
+    }
+
+    # Deactivate the target account.
+    deactivate_response = client.patch(
+        f"/admin/users/{target['id']}/deactivate",
+        headers=admin_headers,
+    )
+
+    assert deactivate_response.status_code == 200
+
+    # The existing token must be rejected while inactive.
+    inactive_response = client.get(
+        "/users/me",
+        headers=old_target_headers,
+    )
+
+    assert inactive_response.status_code == 401
+
+    # Reactivate the account.
+    reactivate_response = client.patch(
+        f"/admin/users/{target['id']}/reactivate",
+        headers=admin_headers,
+    )
+
+    assert reactivate_response.status_code == 200
+
+    # Verify authentication works again after reactivation.
+    new_target_headers = {
+        "Authorization": f"Bearer {create_token(target['id'])}"
+    }
+
+    active_response = client.get(
+        "/users/me",
+        headers=new_target_headers,
+    )
+
+    assert active_response.status_code == 200
+    assert active_response.json()["id"] == target["id"]
+    assert active_response.json()["is_active"] is True

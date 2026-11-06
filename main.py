@@ -40,6 +40,8 @@ from database import (
     get_db,
     create_db_tables,
     migrate_user_account_lifecycle,
+    migrate_audit_log_account_status,
+    migrate_primary_admin,
 )
 
 from user_model import User
@@ -174,6 +176,10 @@ class UserProfileResponse(BaseModel):
     email: str
     role: str
     created_at: datetime
+    is_active: bool
+    is_primary_admin: bool
+    deactivated_at: datetime | None = None
+
 # JWT bearer authentication
 security = HTTPBearer(auto_error=False)
 
@@ -191,6 +197,8 @@ class AuditLogResponse(BaseModel):
     action: str
     previous_role: str
     new_role: str
+    previous_status: str | None = None
+    new_status: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -389,6 +397,8 @@ class DialogueRequest(BaseModel):
 def startup_event():
     create_db_tables()
     migrate_user_account_lifecycle()
+    migrate_audit_log_account_status()
+    migrate_primary_admin()
 
 @app.post("/register", status_code=status.HTTP_201_CREATED)
 def register_user(
@@ -869,6 +879,17 @@ def update_user_role(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found.",
         )
+
+    # The primary administrator can never be demoted.
+    if (
+        target_user.is_primary_admin
+        and request.role != "admin"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The primary administrator cannot be demoted.",
+        )
+
     # Never allow a role change to leave zero administrators.
     if (
         target_user.role == "admin"
@@ -935,6 +956,149 @@ def update_user_role(
         "message": "User role updated successfully.",
         "user": UserProfileResponse.model_validate(target_user),
     }
+
+
+def update_user_account_status(
+    user_id: int,
+    activate: bool,
+    current_admin: User,
+    db: Session,
+):
+    """Activate or deactivate a user and record the administrator action."""
+
+    target_user = db.query(User).filter(
+        User.id == user_id
+    ).first()
+
+    if target_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    # The primary administrator account cannot be deactivated.
+    if not activate and target_user.is_primary_admin:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The primary administrator cannot be deactivated.",
+        )
+
+    # Administrators cannot deactivate their own accounts.
+    if not activate and target_user.id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Administrators cannot deactivate their own accounts.",
+        )
+
+    # Avoid unnecessary updates and audit records.
+    if target_user.is_active == activate:
+        return {
+            "message": (
+                "User is already active."
+                if activate
+                else "User is already deactivated."
+            ),
+            "user": UserProfileResponse.model_validate(target_user),
+        }
+
+    # Never deactivate the last active administrator.
+    if not activate and target_user.role == "admin":
+        active_admin_count = db.query(User).filter(
+            User.role == "admin",
+            User.is_active.is_(True),
+        ).count()
+
+        if active_admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The last active administrator cannot be deactivated.",
+            )
+
+    previous_status = (
+        "active" if target_user.is_active else "inactive"
+    )
+    new_status = "active" if activate else "inactive"
+
+    audit_record = AuditLog(
+        actor_user_id=current_admin.id,
+        actor_username=current_admin.username,
+        target_user_id=target_user.id,
+        target_username=target_user.username,
+        action=(
+            "account_reactivated"
+            if activate
+            else "account_deactivated"
+        ),
+        previous_role=target_user.role,
+        new_role=target_user.role,
+        previous_status=previous_status,
+        new_status=new_status,
+    )
+
+    try:
+        target_user.is_active = activate
+        target_user.deactivated_at = (
+            None if activate else datetime.now(timezone.utc)
+        )
+
+        db.add(audit_record)
+
+        # Account status and audit record are saved together.
+        db.commit()
+        db.refresh(target_user)
+
+    except Exception:
+        db.rollback()
+
+        logger.exception(
+            "Failed to update account status or save its audit record."
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to update account status. Please try again.",
+        )
+
+    return {
+        "message": (
+            "User account reactivated successfully."
+            if activate
+            else "User account deactivated successfully."
+        ),
+        "user": UserProfileResponse.model_validate(target_user),
+    }
+
+
+@app.patch("/admin/users/{user_id}/deactivate")
+def deactivate_user(
+    user_id: int,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Deactivate a user account."""
+
+    return update_user_account_status(
+        user_id=user_id,
+        activate=False,
+        current_admin=current_admin,
+        db=db,
+    )
+
+
+@app.patch("/admin/users/{user_id}/reactivate")
+def reactivate_user(
+    user_id: int,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Reactivate a previously deactivated user account."""
+
+    return update_user_account_status(
+        user_id=user_id,
+        activate=True,
+        current_admin=current_admin,
+        db=db,
+    )
 
 @app.get("/")
 async def root():

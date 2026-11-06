@@ -27,6 +27,16 @@ class AuditLog(Base):
     previous_role = Column(String(20), nullable=False)
     new_role = Column(String(20), nullable=False)
 
+    # Account activation status before and after an action
+    previous_status = Column(
+        String(20),
+        nullable=True,
+    )
+
+    new_status = Column(
+        String(20),
+        nullable=True,
+    )
     # Automatically generated database timestamp
     created_at = Column(
         DateTime(timezone=True),
