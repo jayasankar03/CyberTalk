@@ -7,6 +7,7 @@ import httpx
 
 from fastapi.testclient import TestClient
 
+from ai_api_test_helpers import configure_test_auth
 from main import app
 
 from qa_service import OllamaResponseError
@@ -14,6 +15,8 @@ client = TestClient(app)
 
 
 class CybersecurityQAAPITests(unittest.TestCase):
+    def setUp(self):
+        configure_test_auth(client)
 
     @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
     def test_cybersecurity_question_returns_answer(self, mock_answer):

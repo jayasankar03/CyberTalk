@@ -75,17 +75,27 @@ def create_test_user():
 
 
 def get_auth_headers(user):
-    token = create_access_token(
-        data={
-            "sub": str(user["id"]),
-            "role": user["role"],
-        }
-    )
+    db = TestingSessionLocal()
+
+    try:
+        db_user = db.query(User).filter(User.id == user["id"]).first()
+
+        if db_user is None:
+            raise ValueError("Test user not found.")
+
+        token = create_access_token(
+            data={
+                "sub": str(db_user.id),
+                "role": db_user.role,
+                "auth_version": db_user.auth_version,
+            }
+        )
+    finally:
+        db.close()
 
     return {
         "Authorization": f"Bearer {token}"
     }
-
 
 def change_password(
     headers,
@@ -114,7 +124,12 @@ def test_change_password_success():
     assert response.json()["message"] == (
         "Password changed successfully."
     )
+    old_token_response = client.get(
+        "/users/me",
+        headers=headers,
+    )
 
+    assert old_token_response.status_code == 401
     db = TestingSessionLocal()
     try:
         stored_user = db.query(User).filter(

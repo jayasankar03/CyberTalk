@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from user_model import User
 
 # Configure a test-only JWT secret.
 os.environ["CYBERTALK_SECRET_KEY"] = "cybertalk-test-secret-key-for-tests"
@@ -79,9 +80,7 @@ def create_test_user():
 def test_get_my_profile_success():
     user = create_test_user()
 
-    token = create_access_token(
-        data={"sub": str(user["id"]), "role": "user"}
-    )
+    token = get_profile_token(user)
 
     response = client.get(
         "/users/me",
@@ -118,8 +117,8 @@ def test_get_my_profile_with_invalid_token():
 def test_get_my_profile_with_expired_token():
     user = create_test_user()
 
-    token = create_access_token(
-        data={"sub": str(user["id"]), "role": "user"},
+    token = get_profile_token(
+        user,
         expires_delta=timedelta(seconds=-1),
     )
 
@@ -142,11 +141,25 @@ def test_get_my_profile_for_nonexistent_user():
     )
 
     assert response.status_code == 401
-def get_profile_token(user):
-    return create_access_token(
-        data={"sub": str(user["id"]), "role": user["role"]}
-    )
+def get_profile_token(user, expires_delta=None):
+    db = TestingSessionLocal()
 
+    try:
+        db_user = db.query(User).filter(User.id == user["id"]).first()
+
+        if db_user is None:
+            raise ValueError("Test user not found.")
+
+        return create_access_token(
+            data={
+                "sub": str(db_user.id),
+                "role": db_user.role,
+                "auth_version": db_user.auth_version,
+            },
+            expires_delta=expires_delta,
+        )
+    finally:
+        db.close()
 
 def test_update_my_profile_success():
     user = create_test_user()

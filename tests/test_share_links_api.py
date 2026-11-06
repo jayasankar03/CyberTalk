@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from user_model import User
 
 os.environ["CYBERTALK_SECRET_KEY"] = (
     "cybertalk-test-secret-key-for-tests"
@@ -73,13 +74,23 @@ def create_test_user(username="shareuser"):
 
 
 def create_token(user_id):
-    return create_access_token(
-        data={
-            "sub": str(user_id),
-            "role": "user",
-        }
-    )
+    db = TestingSessionLocal()
 
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+
+        if user is None:
+            raise ValueError("Test user not found.")
+
+        return create_access_token(
+            data={
+                "sub": str(user.id),
+                "role": user.role,
+                "auth_version": user.auth_version,
+            }
+        )
+    finally:
+        db.close()
 
 def auth_headers(user_id):
     return {

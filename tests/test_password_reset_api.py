@@ -447,6 +447,8 @@ class PasswordResetAPITests(unittest.TestCase):
                     user.hashed_password,
                 )
             )
+            self.assertEqual(user.auth_version, 1)
+
             self.assertFalse(
                 verify_password(
                     "SecurePass123",

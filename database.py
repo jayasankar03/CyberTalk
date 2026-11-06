@@ -141,3 +141,26 @@ def migrate_primary_admin():
                     "NOT NULL DEFAULT 0"
                 )
             )
+
+def migrate_user_auth_version():
+    """Add authentication version to existing users."""
+
+    inspector = inspect(engine)
+
+    if "users" not in inspector.get_table_names():
+        return
+
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("users")
+    }
+
+    if "auth_version" not in existing_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN auth_version INTEGER "
+                    "NOT NULL DEFAULT 0"
+                )
+            )

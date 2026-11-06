@@ -14,6 +14,7 @@ from fastapi import (
     Depends,
     status,
 )
+from contextlib import asynccontextmanager
 from fastapi.security import (
     HTTPBearer,
     HTTPAuthorizationCredentials,
@@ -42,6 +43,7 @@ from database import (
     migrate_user_account_lifecycle,
     migrate_audit_log_account_status,
     migrate_primary_admin,
+    migrate_user_auth_version,
 )
 
 from user_model import User
@@ -66,7 +68,28 @@ from qa_service import (
     answer_cybersecurity_question,
 )
 
-app = FastAPI(title="CyberTalk API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize database tables and migrations during application startup.
+    logger.info("Starting CyberTalk API...")
+
+    create_db_tables()
+    migrate_user_account_lifecycle()
+    migrate_audit_log_account_status()
+    migrate_primary_admin()
+    migrate_user_auth_version()
+
+    logger.info("CyberTalk API startup completed.")
+
+    yield
+
+    logger.info("CyberTalk API shutdown completed.")
+
+
+app = FastAPI(
+    title="CyberTalk API",
+    lifespan=lifespan,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -344,6 +367,16 @@ def get_current_user(
             detail="This account has been deactivated. Please contact an administrator.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    token_auth_version = payload.get("auth_version")
+
+    if (
+        type(token_auth_version) is not int
+        or token_auth_version != user.auth_version
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session is invalid. Please log in again.",
+        )
     return user
 
 def require_admin(
@@ -391,14 +424,6 @@ class DialogueRequest(BaseModel):
             )
 
         return value
-
-# Create database tables when the application starts.
-@app.on_event("startup")
-def startup_event():
-    create_db_tables()
-    migrate_user_account_lifecycle()
-    migrate_audit_log_account_status()
-    migrate_primary_admin()
 
 @app.post("/register", status_code=status.HTTP_201_CREATED)
 def register_user(
@@ -495,6 +520,7 @@ def login_user(
         data={
             "sub": str(user.id),
             "role": user.role,
+            "auth_version": user.auth_version,
         }
     )
 
@@ -664,6 +690,8 @@ def confirm_password_reset(
             request.new_password
         )
 
+        user.auth_version += 1
+
         # Invalidate every other outstanding reset token for this user.
         db.query(PasswordResetToken).filter(
             PasswordResetToken.user_id == user.id,
@@ -735,6 +763,8 @@ def change_password(
         current_user.hashed_password = hash_password(
             request.new_password
         )
+
+        current_user.auth_version += 1
 
         # Invalidate all outstanding password-reset tokens.
         db.query(PasswordResetToken).filter(
@@ -1073,6 +1103,7 @@ def update_user_account_status(
     )
 
     try:
+        target_user.auth_version += 1
         target_user.is_active = activate
         target_user.deactivated_at = (
             None if activate else datetime.now(timezone.utc)
@@ -1148,7 +1179,10 @@ async def health_check():
 
 
 @app.post("/ask")
-async def ask_question(request: QARequest):
+async def ask_question(
+    request: QARequest,
+    current_user: User = Depends(get_current_user)
+):
     try:
         answer = await answer_cybersecurity_question(
             request.question
@@ -1296,7 +1330,10 @@ async def generate_persona_response(
     return extract_dialogue_content(result)
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user)
+):
     try:
         reply = await generate_persona_response(
             stakeholder_name="Cybersecurity Assistant",
@@ -1325,7 +1362,10 @@ async def chat(request: ChatRequest):
 
 
 @app.post("/dialogue")
-async def dialogue(request: DialogueRequest):
+async def dialogue(
+    request: DialogueRequest,
+    current_user: User = Depends(get_current_user)
+):
     dialogue_start = time.perf_counter()
     generation_start = time.perf_counter()
 

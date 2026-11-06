@@ -2775,6 +2775,7 @@ if qa_submitted:
 
                 qa_response = requests.post(
                     f"{API_URL}/ask",
+                    headers=get_auth_headers(),
                     json={
                         "question": question.strip()
                     },
@@ -2980,6 +2981,7 @@ if submitted:
 
                 response = requests.post(
                     f"{API_URL}/dialogue",
+                    headers=get_auth_headers(),
                     json=payload,
                     timeout=900,
                 )

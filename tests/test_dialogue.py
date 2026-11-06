@@ -6,6 +6,7 @@ from urllib import response
 from fastapi.testclient import TestClient
 
 from agreement import AgreementResult
+from ai_api_test_helpers import configure_test_auth
 from main import app, DialogueGenerationError
 
 import httpx
@@ -16,6 +17,8 @@ client = TestClient(app)
 
 
 class DialogueRequestTests(unittest.TestCase):
+    def setUp(self):
+        configure_test_auth(client)
 
     @patch("main.evaluate_agreement", new_callable=AsyncMock)
     @patch("main.generate_persona_response", new_callable=AsyncMock)

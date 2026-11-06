@@ -75,13 +75,23 @@ def create_test_user(
 
 
 def create_token(user_id, role="user"):
-    return create_access_token(
-        data={
-            "sub": str(user_id),
-            "role": role,
-        }
-    )
+    db = TestingSessionLocal()
 
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+
+        if user is None:
+            raise ValueError("Test user not found.")
+
+        return create_access_token(
+            data={
+                "sub": str(user.id),
+                "role": role,
+                "auth_version": user.auth_version,
+            }
+        )
+    finally:
+        db.close()
 
 def promote_to_admin(user_id):
     db = TestingSessionLocal()
@@ -1048,12 +1058,24 @@ def test_deactivation_preserves_user_chat_history():
         headers=admin_headers,
     )
 
+    # The original token must remain invalid after reactivation.
+    old_token_response = client.get(
+        "/history",
+        headers=target_headers,
+    )
+
+    assert old_token_response.status_code == 401
+
+    # A newly issued token must restore access to preserved history.
+    new_target_headers = {
+        "Authorization": f"Bearer {create_token(target['id'])}"
+    }
     assert reactivate_response.status_code == 200
 
     # Verify the user can access the original conversation again.
     history_response = client.get(
         "/history",
-        headers=target_headers,
+        headers=new_target_headers,
     )
 
     assert history_response.status_code == 200
@@ -1099,6 +1121,14 @@ def test_reactivated_user_can_access_protected_endpoints():
     )
 
     assert reactivate_response.status_code == 200
+
+    # The token issued before deactivation must remain invalid.
+    old_token_response = client.get(
+        "/users/me",
+        headers=old_target_headers,
+    )
+
+    assert old_token_response.status_code == 401
 
     # Verify authentication works again after reactivation.
     new_target_headers = {

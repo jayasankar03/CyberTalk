@@ -5,6 +5,7 @@ from database import (
     migrate_user_account_lifecycle,
     migrate_audit_log_account_status,
     migrate_primary_admin,
+    migrate_user_auth_version
 )
 from user_model import User
 
@@ -17,7 +18,7 @@ create_db_tables()
 migrate_user_account_lifecycle()
 migrate_audit_log_account_status()
 migrate_primary_admin()
-
+migrate_user_auth_version()
 
 db = SessionLocal()
 

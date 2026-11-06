@@ -42,6 +42,13 @@ class User(Base):
         server_default="1",
     )
 
+    auth_version = Column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
     deactivated_at = Column(
         DateTime(timezone=True),
         nullable=True,
