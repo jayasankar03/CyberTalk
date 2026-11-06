@@ -231,12 +231,12 @@ class PasswordResetAPITests(unittest.TestCase):
         self.assertNotIn(raw_token, response.text)
 
     def test_multiple_requests_generate_unique_tokens(self):
+        first_token = "first_unique_reset_token"
+        second_token = "second_unique_reset_token"
+
         with patch(
             "main.generate_password_reset_token",
-            side_effect=[
-                "first_unique_reset_token",
-                "second_unique_reset_token",
-            ],
+            side_effect=[first_token, second_token],
         ):
             first_response = self.client.post(
                 "/password-reset/request",
@@ -253,18 +253,59 @@ class PasswordResetAPITests(unittest.TestCase):
 
         db = self.TestingSessionLocal()
         try:
-            tokens = db.query(
-                PasswordResetToken
-            ).all()
+            tokens = db.query(PasswordResetToken).all()
 
             self.assertEqual(len(tokens), 2)
 
+            first_record = db.query(PasswordResetToken).filter(
+                PasswordResetToken.token_hash
+                == hash_reset_token(first_token)
+            ).first()
+
+            second_record = db.query(PasswordResetToken).filter(
+                PasswordResetToken.token_hash
+                == hash_reset_token(second_token)
+            ).first()
+
+            self.assertIsNotNone(first_record)
+            self.assertIsNotNone(second_record)
+
             self.assertNotEqual(
-                tokens[0].token_hash,
-                tokens[1].token_hash,
+                first_record.token_hash,
+                second_record.token_hash,
             )
+
+            # The previous token must be invalidated.
+            self.assertIsNotNone(first_record.used_at)
+
+            # The newest token must remain active.
+            self.assertIsNone(second_record.used_at)
+
         finally:
             db.close()
+
+        # The previous token must no longer work.
+        first_confirm_response = self.client.post(
+            "/password-reset/confirm",
+            json={
+                "token": first_token,
+                "new_password": "NewSecurePass456",
+            },
+        )
+
+        self.assertEqual(first_confirm_response.status_code, 400)
+
+        # The newest token must still work.
+        second_confirm_response = self.client.post(
+            "/password-reset/confirm",
+            json={
+                "token": second_token,
+                "new_password": "NewSecurePass456",
+            },
+        )
+
+        self.assertEqual(second_confirm_response.status_code, 200)
+
     def test_password_reset_email_is_sent_with_original_token(self):
         raw_token = "email_delivery_test_token"
 
@@ -286,17 +327,26 @@ class PasswordResetAPITests(unittest.TestCase):
 
         self.assertNotIn(raw_token, response.text)
 
+
     def test_email_delivery_failure_keeps_generic_response(self):
+        raw_token = "email_failure_reset_token_123"
+
         self.email_sender_mock.side_effect = RuntimeError(
             "SMTP connection failed"
         )
 
-        response = self.client.post(
-            "/password-reset/request",
-            json={"email": "reset@example.com"},
-        )
+        with patch(
+            "main.generate_password_reset_token",
+            return_value=raw_token,
+        ):
+            response = self.client.post(
+                "/password-reset/request",
+                json={"email": "reset@example.com"},
+            )
 
+        # The response must remain generic.
         self.assertEqual(response.status_code, 200)
+
         self.assertEqual(
             response.json(),
             {
@@ -306,6 +356,34 @@ class PasswordResetAPITests(unittest.TestCase):
                 )
             },
         )
+
+        # Verify that the failed-delivery token is invalidated.
+        db = self.TestingSessionLocal()
+        try:
+            token_record = db.query(
+                PasswordResetToken
+            ).filter(
+                PasswordResetToken.token_hash
+                == hash_reset_token(raw_token)
+            ).first()
+
+            self.assertIsNotNone(token_record)
+            self.assertIsNotNone(token_record.used_at)
+
+        finally:
+            db.close()
+
+        # The undelivered token must not be usable.
+        confirm_response = self.client.post(
+            "/password-reset/confirm",
+            json={
+                "token": raw_token,
+                "new_password": "NewSecurePass456",
+            },
+        )
+
+        self.assertEqual(confirm_response.status_code, 400)
+
     def test_invalid_email_is_rejected(self):
         response = self.client.post(
             "/password-reset/request",

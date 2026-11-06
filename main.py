@@ -504,6 +504,7 @@ def login_user(
         "expires_in": 1800,
     }
 
+
 @app.post("/password-reset/request")
 def request_password_reset(
     request: PasswordResetRequest,
@@ -525,11 +526,11 @@ def request_password_reset(
     if user is None:
         return generic_response
 
+    current_time = datetime.now(timezone.utc)
+
     # Generate a secure token and store only its SHA-256 hash.
     reset_token = generate_password_reset_token()
     token_hash = hash_reset_token(reset_token)
-
-    current_time = datetime.now(timezone.utc)
 
     reset_record = PasswordResetToken(
         user_id=user.id,
@@ -538,30 +539,66 @@ def request_password_reset(
     )
 
     try:
+        # Invalidate all previous unused reset tokens for this user.
+        db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        ).update(
+            {"used_at": current_time},
+            synchronize_session=False,
+        )
+
+        # Save the new token and previous-token invalidation together.
         db.add(reset_record)
         db.commit()
+        db.refresh(reset_record)
 
     except Exception:
         db.rollback()
+
         logger.exception(
             "Failed to create a password reset request."
         )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to process password reset request.",
         )
+
     # Send the reset link without exposing whether an account exists.
     try:
         send_password_reset_email(
             recipient_email=user.email,
             reset_token=reset_token,
         )
+
     except Exception:
-        # Keep the response generic and do not log the token or email.
+        # Invalidate the new token if email delivery fails.
+        try:
+            db.query(PasswordResetToken).filter(
+                PasswordResetToken.id == reset_record.id,
+                PasswordResetToken.used_at.is_(None),
+            ).update(
+                {"used_at": datetime.now(timezone.utc)},
+                synchronize_session=False,
+            )
+
+            db.commit()
+
+        except Exception:
+            db.rollback()
+
+            logger.exception(
+                "Failed to invalidate a reset token after email delivery failure."
+            )
+
+        # Never log the token or email address.
         logger.warning(
             "Password reset email delivery failed."
         )
+
     return generic_response
+
 @app.post("/password-reset/confirm")
 def confirm_password_reset(
     request: PasswordResetConfirmRequest,
