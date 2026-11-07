@@ -68,6 +68,49 @@ class AuthenticationTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 get_secret_key()
 
+    def test_production_rejects_short_secret_key(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "CYBERTALK_ENV": "production",
+                "CYBERTALK_SECRET_KEY": "short-secret",
+            },
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "at least 32 characters",
+            ):
+                get_secret_key()
+
+    def test_production_rejects_placeholder_secret_key(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "CYBERTALK_ENV": "production",
+                "CYBERTALK_SECRET_KEY": (
+                    "replace-with-a-long-random-secret"
+                ),
+            },
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "placeholder value",
+            ):
+                get_secret_key()
+
+    def test_production_accepts_strong_secret_key(self):
+        strong_secret = (
+            "production-secret-key-with-more-than-32-characters"
+        )
+
+        with patch.dict(
+            "os.environ",
+            {
+                "CYBERTALK_ENV": "production",
+                "CYBERTALK_SECRET_KEY": strong_secret,
+            },
+        ):
+            self.assertEqual(get_secret_key(), strong_secret)
 
 if __name__ == "__main__":
     unittest.main()

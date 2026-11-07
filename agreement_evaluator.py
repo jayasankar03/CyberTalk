@@ -4,13 +4,10 @@ import logging
 import httpx
 
 from agreement import AgreementResult
+from config import OLLAMA_URL, MODEL_NAME
 
 
 logger = logging.getLogger("cybertalk")
-
-
-OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
-MODEL_NAME = "llama3.2:3b"
 
 class AgreementEvaluationError(Exception):
     """Raised when agreement evaluation fails."""

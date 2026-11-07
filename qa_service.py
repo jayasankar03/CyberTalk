@@ -1,8 +1,6 @@
-
 import httpx
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
-MODEL_NAME = "llama3.2:3b"
+from config import OLLAMA_URL, MODEL_NAME
 
 OUT_OF_SCOPE_MESSAGE = (
     "This question does not appear to be related to cybersecurity. "

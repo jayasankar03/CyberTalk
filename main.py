@@ -35,7 +35,18 @@ from fastapi import (
     status,
 )
 
-from auth import create_access_token, decode_access_token
+from auth import (
+    create_access_token,
+    decode_access_token,
+    get_secret_key,
+)
+
+from config import (
+    OLLAMA_URL,
+    MODEL_NAME,
+    validate_environment,
+    validate_ollama_configuration,
+)
 
 from database import (
     get_db,
@@ -70,8 +81,21 @@ from qa_service import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize database tables and migrations during application startup.
+    """Validate configuration and initialize the application."""
+
     logger.info("Starting CyberTalk API...")
+
+    # Validate application configuration before database initialization.
+    logger.info("Validating application configuration...")
+
+    validate_environment()
+    get_secret_key()
+    validate_ollama_configuration()
+
+    logger.info("Application configuration validation completed.")
+
+    # Initialize database tables and migrations.
+    logger.info("Initializing database tables and migrations...")
 
     create_db_tables()
     migrate_user_account_lifecycle()
@@ -97,9 +121,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("cybertalk")
-
-OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
-MODEL_NAME = "llama3.2:3b"
 
 class DialogueGenerationError(Exception):
     """Raised when dialogue generation returns an invalid response."""

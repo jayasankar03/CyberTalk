@@ -7,6 +7,7 @@ import jwt
 from jwt.exceptions import InvalidTokenError
 
 from dotenv import load_dotenv
+from config import get_environment
 
 # Load environment variables from the project .env file.
 load_dotenv()
@@ -16,9 +17,6 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 def get_secret_key() -> str:
-    """
-    Retrieve the JWT signing secret from an environment variable.
-    """
     secret_key = os.getenv("CYBERTALK_SECRET_KEY")
 
     if not secret_key:
@@ -26,8 +24,28 @@ def get_secret_key() -> str:
             "CYBERTALK_SECRET_KEY environment variable is not configured."
         )
 
-    return secret_key
+    if get_environment() == "production":
+        normalized_secret = secret_key.strip().lower()
 
+        placeholder_values = {
+            "replace-with-a-long-random-secret",
+            "your-secret-key",
+            "change-me",
+            "changeme",
+            "secret",
+        }
+
+        if len(secret_key.strip()) < 32:
+            raise RuntimeError(
+                "CYBERTALK_SECRET_KEY must contain at least 32 characters in production."
+            )
+
+        if normalized_secret in placeholder_values:
+            raise RuntimeError(
+                "CYBERTALK_SECRET_KEY must not use a placeholder value in production."
+            )
+
+    return secret_key
 
 def create_access_token(
     data: dict[str, Any],
