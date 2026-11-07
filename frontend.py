@@ -10,6 +10,8 @@ import re
 from io import BytesIO
 from xml.sax.saxutils import escape
 
+import base64
+
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -1962,25 +1964,97 @@ if st.session_state["show_admin_dashboard"]:
 st.session_state.setdefault("show_profile", False)
 
 st.session_state.setdefault("edit_profile_open", False)
+
 st.session_state.setdefault("change_password_open", False)
 
-top_spacer, profile_column = st.columns([12, 1])
+# Retrieve the saved profile picture for the home-page avatar.
+profile_picture_bytes = None
+profile_picture_mime = "image/jpeg"
 
-with profile_column:
+if not st.session_state["show_profile"]:
 
-    if st.button(
-        "👤",
-        key="profile_menu_button",
-        help="My Profile",
-        use_container_width=True,
-    ):
-
-        st.session_state["show_profile"] = (
-            not st.session_state["show_profile"]
+    try:
+        avatar_response = requests.get(
+            f"{API_URL}/users/me/profile-picture",
+            headers=get_auth_headers(),
+            timeout=15,
         )
 
-        st.rerun()
+        if avatar_response.status_code == 200:
+            profile_picture_bytes = avatar_response.content
+            profile_picture_mime = avatar_response.headers.get(
+                "content-type",
+                "image/jpeg",
+            ).split(";")[0]
 
+        elif avatar_response.status_code == 401:
+            st.session_state["access_token"] = None
+            st.warning(
+                "Your session has expired. Please log in again."
+            )
+            st.stop()
+
+        elif avatar_response.status_code != 404:
+            st.warning(
+                "Could not load your profile picture."
+            )
+
+    except requests.exceptions.RequestException:
+        st.warning(
+            "Could not connect to load your profile picture."
+        )
+
+
+# Display the profile-picture navigation control only on the home page.
+if not st.session_state["show_profile"]:
+
+    top_spacer, profile_column = st.columns([12, 1])
+
+    with profile_column:
+
+        # Use the uploaded picture as the profile button itself.
+        if profile_picture_bytes:
+
+            encoded_picture = base64.b64encode(
+                profile_picture_bytes
+            ).decode("ascii")
+
+            st.markdown(
+                f"""
+                <style>
+                div.st-key-profile_menu_button button {{
+                    width: 48px !important;
+                    height: 48px !important;
+                    min-height: 48px !important;
+                    padding: 0 !important;
+                    border-radius: 50% !important;
+                    background-image: url(
+                        "data:{profile_picture_mime};base64,{encoded_picture}"
+                    ) !important;
+                    background-size: cover !important;
+                    background-position: center !important;
+                    background-repeat: no-repeat !important;
+                    color: transparent !important;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            profile_button_label = " "
+
+        else:
+            profile_button_label = "👤"
+
+        if st.button(
+            profile_button_label,
+            key="profile_menu_button",
+            help="My Profile",
+            use_container_width=False,
+        ):
+
+            st.session_state["show_profile"] = True
+            st.rerun()
 
 # -----------------------------
 # My Profile Page
@@ -2001,6 +2075,116 @@ if st.session_state["show_profile"]:
     st.write(
         "View your CyberTalk account information."
     )
+
+    st.divider()
+
+    # -----------------------------
+    # Profile Picture
+    # -----------------------------
+
+    st.subheader("Profile Picture")
+
+    # Display the saved profile picture.
+    try:
+        picture_response = requests.get(
+            f"{API_URL}/users/me/profile-picture",
+            headers=get_auth_headers(),
+            timeout=15,
+        )
+
+        if picture_response.status_code == 200:
+            st.image(
+                picture_response.content,
+                width=160,
+            )
+
+        elif picture_response.status_code == 404:
+            st.info("You have not uploaded a profile picture yet.")
+
+        elif picture_response.status_code == 401:
+            st.session_state["access_token"] = None
+            st.error(
+                "Your session has expired. Please log in again."
+            )
+            st.stop()
+
+        else:
+            st.error(
+                "Could not load your profile picture: "
+                f"{get_api_error(picture_response)}"
+            )
+
+    except requests.exceptions.RequestException:
+        st.error(
+            "Could not connect to the API to load your profile picture."
+        )
+
+    # Display upload success after the automatic refresh.
+    if st.session_state.pop(
+        "profile_picture_upload_success",
+        False,
+    ):
+        st.success("Profile picture uploaded successfully!")
+
+    # Image upload control.
+    uploaded_picture = st.file_uploader(
+        "Choose a profile picture",
+        type=["png", "jpg", "jpeg"],
+        key="profile_picture_uploader",
+        help="Upload a JPEG or PNG image. Maximum size: 5 MB.",
+    )
+
+    if st.button(
+        "Upload Profile Picture",
+        key="upload_profile_picture",
+        disabled=uploaded_picture is None,
+        use_container_width=True,
+    ):
+
+        try:
+            with st.spinner("Uploading your profile picture..."):
+
+                upload_response = requests.post(
+                    f"{API_URL}/users/me/profile-picture",
+                    headers=get_auth_headers(),
+                    files={
+                        "file": (
+                            uploaded_picture.name,
+                            uploaded_picture.getvalue(),
+                            uploaded_picture.type
+                            or "application/octet-stream",
+                        )
+                    },
+                    timeout=60,
+                )
+
+            if upload_response.status_code == 200:
+
+                st.session_state[
+                    "profile_picture_upload_success"
+                ] = True
+
+                st.rerun()
+
+            elif upload_response.status_code == 401:
+
+                st.session_state["access_token"] = None
+
+                st.error(
+                    "Your session has expired. Please log in again."
+                )
+
+            else:
+                st.error(
+                    "Profile picture upload failed: "
+                    f"{get_api_error(upload_response)}"
+                )
+
+        except requests.exceptions.RequestException:
+            st.error(
+                "Could not upload your profile picture. "
+                "Please check your connection and try again."
+            )
 
     st.divider()
 

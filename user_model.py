@@ -49,6 +49,12 @@ class User(Base):
         server_default="0",
     )
 
+    # Profile picture filename stored on the server
+    profile_picture = Column(
+        String(255),
+        nullable=True,
+    )
+
     deactivated_at = Column(
         DateTime(timezone=True),
         nullable=True,

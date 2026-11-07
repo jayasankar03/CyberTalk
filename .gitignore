@@ -9,5 +9,5 @@ __pycache__/
 *.db
 *.sqlite
 *.sqlite3
-
 pytest.ini
+profile_pictures

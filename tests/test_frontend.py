@@ -1,23 +1,23 @@
 
+import base64
 import json
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from streamlit.testing.v1 import AppTest
+import requests
 
+from io import BytesIO
+from PIL import Image
 
 class FrontendTests(unittest.TestCase):
     def test_about_page_is_displayed_first(self):
 
         app = AppTest.from_file(
-            str(
-                Path(__file__).resolve().parent.parent
-                / "frontend.py"
-            ),
-            default_timeout=10,
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
-
         self.assertTrue(
             any(
                 "CyberTalk" in element.value
@@ -43,11 +43,8 @@ class FrontendTests(unittest.TestCase):
     def test_about_page_contains_project_features(self):
 
         app = AppTest.from_file(
-            str(
-                Path(__file__).resolve().parent.parent
-                / "frontend.py"
-            ),
-            default_timeout=10,
+            str(Path(__file__).resolve().parent.parent / "frontend.py"),
+            default_timeout=10
         ).run()
 
         page_html = " ".join(
@@ -80,7 +77,7 @@ class FrontendTests(unittest.TestCase):
         app = AppTest.from_file(
             str(Path(__file__).resolve().parent.parent / "frontend.py"),
             default_timeout=10
-        ).run()
+        )
 
         app.session_state["access_token"] = "test-access-token"
 
@@ -122,6 +119,15 @@ class FrontendTests(unittest.TestCase):
         )
 
         def mock_get(url, *args, **kwargs):
+            if url.endswith("/users/me/profile-picture"):
+                picture_response = Mock()
+                picture_response.status_code = 404
+                picture_response.content = b""
+                picture_response.json.return_value = {
+                    "detail": "No profile picture has been uploaded."
+                }
+                return picture_response
+
             if url.endswith("/users/me"):
                 return profile_response
 
@@ -148,6 +154,7 @@ class FrontendTests(unittest.TestCase):
         app.run()
 
         return app
+
     def test_page_heading_and_custom_persona_guidance(self):
         app = self.run_authenticated_app()
 
@@ -1083,6 +1090,243 @@ class FrontendTests(unittest.TestCase):
         self.assertIn("Download as PDF", download_labels)
         self.assertIn("Download as TXT", download_labels)
 
+
+    def open_profile_picture_page(self):
+        """Open the profile page without opening another profile form."""
+
+        app = self.run_authenticated_app()
+
+        profile_button = next(
+            button for button in app.button
+            if button.label == "👤"
+        )
+
+        profile_button.click().run(timeout=10)
+
+        return app
+
+    def test_existing_profile_picture_displays_correctly(self):
+        app = self.open_profile_picture_page()
+
+        image = Image.new("RGB", (1, 1), color="white")
+        image_buffer = BytesIO()
+        image.save(image_buffer, format="PNG")
+        picture_bytes = image_buffer.getvalue()
+
+        picture_response = Mock()
+        picture_response.status_code = 200
+        picture_response.content = picture_bytes
+        picture_response.headers = {
+            "content-type": "image/png"
+        }
+
+        original_get = requests.get
+
+        def mock_profile_picture_get(url, *args, **kwargs):
+            if url.endswith("/users/me/profile-picture"):
+                return picture_response
+
+            return original_get(url, *args, **kwargs)
+
+        with (
+            patch(
+                "requests.get",
+                side_effect=mock_profile_picture_get,
+            ),
+            patch("streamlit.image") as mock_image,
+        ):
+            app.run(timeout=10)
+
+        mock_image.assert_called_once_with(
+            picture_bytes,
+            width=160,
+        )
+
+    def test_no_profile_picture_displays_correctly(self):
+        app = self.open_profile_picture_page()
+
+        self.assertTrue(
+            any(
+                "You have not uploaded a profile picture yet."
+                in element.value
+                for element in app.info
+            )
+        )
+
+    def test_profile_picture_upload_success(self):
+        app = self.open_profile_picture_page()
+
+        uploaded_picture = Mock()
+        uploaded_picture.name = "avatar.png"
+        uploaded_picture.type = "image/png"
+        uploaded_picture.getvalue.return_value = b"test-image-data"
+
+        upload_response = Mock()
+        upload_response.status_code = 200
+        upload_response.ok = True
+
+        picture_response = Mock()
+        picture_response.status_code = 404
+        picture_response.content = b""
+        picture_response.json.return_value = {
+            "detail": "No profile picture has been uploaded."
+        }
+
+        with (
+            patch(
+                "streamlit.file_uploader",
+                return_value=uploaded_picture,
+            ),
+            patch(
+                "requests.post",
+                return_value=upload_response,
+            ) as mock_post,
+            patch(
+                "requests.get",
+                return_value=picture_response,
+            ) as mock_get,
+        ):
+            app.run(timeout=10)
+
+            upload_button = next(
+                button for button in app.button
+                if button.label == "Upload Profile Picture"
+            )
+
+            upload_button.click().run(timeout=10)
+
+        mock_post.assert_called_once()
+
+        self.assertEqual(
+            mock_post.call_args.kwargs["files"]["file"],
+            (
+                "avatar.png",
+                b"test-image-data",
+                "image/png",
+            ),
+        )
+
+        self.assertGreaterEqual(
+            mock_get.call_count,
+            2,
+            "The profile picture should be fetched again after upload.",
+        )
+
+        self.assertTrue(
+            any(
+                element.value
+                == "Profile picture uploaded successfully!"
+                for element in app.success
+            )
+        )
+
+    def test_profile_picture_upload_failure(self):
+        app = self.open_profile_picture_page()
+
+        uploaded_picture = Mock()
+        uploaded_picture.name = "avatar.png"
+        uploaded_picture.type = "image/png"
+        uploaded_picture.getvalue.return_value = b"test-image-data"
+
+        upload_response = Mock()
+        upload_response.status_code = 400
+        upload_response.json.return_value = {
+            "detail": "Invalid profile picture."
+        }
+
+        with (
+            patch(
+                "streamlit.file_uploader",
+                return_value=uploaded_picture,
+            ),
+            patch(
+                "requests.post",
+                return_value=upload_response,
+            ),
+        ):
+            app.run(timeout=10)
+
+            upload_button = next(
+                button for button in app.button
+                if button.label == "Upload Profile Picture"
+            )
+
+            upload_button.click().run(timeout=10)
+
+        self.assertTrue(
+            any(
+                "Invalid profile picture."
+                in element.value
+                for element in app.error
+            ),
+            "A useful error should be displayed when upload fails.",
+        )
+
+    def test_profile_picture_expired_session(self):
+        app = self.open_profile_picture_page()
+
+        expired_response = Mock()
+        expired_response.status_code = 401
+        expired_response.content = b""
+        expired_response.json.return_value = {
+            "detail": "Not authenticated."
+        }
+
+        with patch(
+            "requests.get",
+            return_value=expired_response,
+        ):
+            app.run(timeout=10)
+
+        self.assertIsNone(
+            app.session_state["access_token"]
+        )
+
+        session_message = "Your session has expired. Please log in again."
+
+        self.assertTrue(
+            any(
+                session_message in element.value
+                for element in list(app.error) + list(app.warning)
+            ),
+            "The expired-session message should be displayed.",
+        )
+
+    def test_profile_picture_navigation_and_no_duplicate_button(self):
+        app = self.run_authenticated_app()
+
+        home_profile_button = next(
+            (
+                button for button in app.button
+                if button.label == "👤"
+            ),
+            None,
+        )
+
+        self.assertIsNotNone(
+            home_profile_button,
+            "The default profile button should appear on the home page.",
+        )
+
+        home_profile_button.click().run(timeout=10)
+
+        self.assertTrue(
+            any(
+                element.value == "My Profile"
+                for element in app.title
+            )
+        )
+
+        profile_button_labels = [
+            button.label for button in app.button
+        ]
+
+        self.assertNotIn(
+            "👤",
+            profile_button_labels,
+            "A separate default profile button must not appear "
+            "on the profile page.",
+        )
 
 if __name__ == "__main__":
     unittest.main()

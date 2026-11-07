@@ -3,6 +3,13 @@ import secrets
 import logging
 import time
 import httpx
+import os
+import uuid
+from pathlib import Path
+
+from PIL import Image, UnidentifiedImageError
+from fastapi import UploadFile, File
+from fastapi.responses import FileResponse
 from streamlit import user
 from email_service import send_password_reset_email
 from datetime import datetime, timedelta, timezone
@@ -55,6 +62,7 @@ from database import (
     migrate_audit_log_account_status,
     migrate_primary_admin,
     migrate_user_auth_version,
+    migrate_user_profile_picture,
 )
 
 from user_model import User
@@ -78,6 +86,7 @@ from qa_service import (
     OllamaResponseError,
     answer_cybersecurity_question,
 )
+from uuid import uuid4
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -102,6 +111,7 @@ async def lifespan(app: FastAPI):
     migrate_audit_log_account_status()
     migrate_primary_admin()
     migrate_user_auth_version()
+    migrate_user_profile_picture()
 
     logger.info("CyberTalk API startup completed.")
 
@@ -121,6 +131,84 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("cybertalk")
+
+# ==========================================
+# PROFILE PICTURE STORAGE CONFIGURATION
+# ==========================================
+
+# Store profile pictures in a dedicated server-side directory.
+PROFILE_PICTURE_DIR = (
+    Path(__file__).resolve().parent / "profile_pictures"
+)
+
+# Create the directory if it does not already exist.
+PROFILE_PICTURE_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+# Maximum permitted profile-picture size: 5 MB.
+MAX_PROFILE_PICTURE_SIZE = 5 * 1024 * 1024
+
+# Allowed image formats and their corresponding extensions.
+ALLOWED_PROFILE_PICTURE_FORMATS = {
+    "JPEG": ".jpg",
+    "PNG": ".png",
+}
+def validate_profile_picture(file_content: bytes) -> str:
+    """Validate profile-picture content and return its safe extension."""
+
+    if not file_content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded image is empty.",
+        )
+
+    if len(file_content) > MAX_PROFILE_PICTURE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Profile picture must not exceed 5 MB.",
+        )
+
+    try:
+        from io import BytesIO
+
+        with Image.open(BytesIO(file_content)) as image:
+            image.verify()
+
+        # Reopen the image after verification to inspect its format.
+        with Image.open(BytesIO(file_content)) as image:
+            image_format = image.format
+
+            if image_format not in ALLOWED_PROFILE_PICTURE_FORMATS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only JPEG and PNG images are allowed.",
+                )
+
+            # Enforce reasonable image dimensions.
+            if image.width > 5000 or image.height > 5000:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Image dimensions must not exceed 5000 x 5000 pixels.",
+                )
+
+            image.load()
+
+        return ALLOWED_PROFILE_PICTURE_FORMATS[image_format]
+
+    except HTTPException:
+        raise
+
+    except (
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or corrupted image file.",
+        )
 
 class DialogueGenerationError(Exception):
     """Raised when dialogue generation returns an invalid response."""
@@ -223,6 +311,7 @@ class UserProfileResponse(BaseModel):
     is_active: bool
     is_primary_admin: bool
     deactivated_at: datetime | None = None
+    profile_picture: str | None = None
 
 # JWT bearer authentication
 security = HTTPBearer(auto_error=False)
@@ -881,6 +970,142 @@ def update_my_profile(
 
     return current_user
 
+@app.post("/users/me/profile-picture")
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload or replace the authenticated user's profile picture."""
+
+    # Read at most 5 MB + 1 byte to enforce the upload limit.
+    file_content = await file.read(MAX_PROFILE_PICTURE_SIZE + 1)
+
+    # Validate the actual image content.
+    file_extension = validate_profile_picture(file_content)
+
+    # Generate a unique server-controlled filename.
+    new_filename = f"{uuid4().hex}{file_extension}"
+    new_file_path = PROFILE_PICTURE_DIR / new_filename
+
+    # Save the new image before modifying the database.
+    try:
+        new_file_path.write_bytes(file_content)
+
+    except OSError:
+        logger.exception("Failed to save uploaded profile picture.")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to save profile picture.",
+        )
+
+    # Remember the previous filename for safe replacement.
+    previous_filename = current_user.profile_picture
+
+    # Update the authenticated user's database record.
+    current_user.profile_picture = new_filename
+
+    try:
+        db.commit()
+
+    except Exception:
+        db.rollback()
+
+        # Remove the newly saved image if the database update fails.
+        try:
+            new_file_path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception(
+                "Failed to remove an unreferenced profile picture."
+            )
+
+        logger.exception("Failed to update profile picture in database.")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to update profile picture.",
+        )
+
+    # Delete the previous picture only after the database update succeeds.
+    if previous_filename and previous_filename != new_filename:
+        # Only allow deletion of a file inside the picture directory.
+        if Path(previous_filename).name == previous_filename:
+            previous_file_path = (
+                PROFILE_PICTURE_DIR / previous_filename
+            )
+
+            try:
+                previous_file_path.unlink(missing_ok=True)
+
+            except OSError:
+                logger.warning(
+                    "Could not delete previous profile picture: %s",
+                    previous_filename,
+                )
+
+    return {
+        "message": "Profile picture uploaded successfully.",
+        "profile_picture": new_filename,
+    }
+@app.get("/users/me/profile-picture")
+def get_my_profile_picture(
+    current_user: User = Depends(get_current_user),
+):
+    """Return the authenticated user's profile picture."""
+
+    filename = current_user.profile_picture
+
+    if not filename:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No profile picture has been uploaded.",
+        )
+
+    # Reject filenames containing directory traversal.
+    if Path(filename).name != filename:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile picture not found.",
+        )
+
+    profile_directory = PROFILE_PICTURE_DIR.resolve()
+    file_path = (PROFILE_PICTURE_DIR / filename).resolve()
+
+    # Ensure the resolved file remains inside the picture directory.
+    try:
+        file_path.relative_to(profile_directory)
+
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile picture not found.",
+        )
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile picture not found.",
+        )
+
+    # Only serve the supported image formats.
+    media_type = {
+        ".jpg": "image/jpeg",
+        ".png": "image/png",
+    }.get(file_path.suffix.lower())
+
+    if media_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile picture not found.",
+        )
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
 @app.get(
     "/admin/users",
     response_model=list[UserProfileResponse],
@@ -1221,13 +1446,18 @@ async def ask_question(
         }
 
     except ValueError as exc:
-        logger.warning(
-            "Invalid QA request: %s",
-            str(exc),
-        )
+        error_message = str(exc)
+
+        if error_message == "Please enter a question.":
+            safe_detail = "Please enter a question."
+        else:
+            safe_detail = "Invalid QA request."
+
+        logger.warning("Invalid QA request.")
+
         raise HTTPException(
             status_code=400,
-            detail=str(exc),
+            detail=safe_detail,
         ) from exc
 
     except OllamaResponseError:
@@ -1503,10 +1733,7 @@ async def dialogue(
         }
 
     except AgreementEvaluationError:
-        logger.exception(
-            "Agreement evaluation failed for topic: %s",
-            request.topic,
-        )
+        logger.exception("Agreement evaluation failed.")
         raise HTTPException(
             status_code=502,
             detail="The agreement evaluation service failed. Please try again.",

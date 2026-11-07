@@ -145,6 +145,24 @@ class CybersecurityQAAPITests(unittest.TestCase):
             response.json()["detail"],
             "An unexpected error occurred in the QA service.",
         )
+
+    @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
+    def test_value_error_does_not_expose_internal_details(self, mock_answer):
+        secret_detail = "Internal database password: TEST_SECRET_123"
+        mock_answer.side_effect = ValueError(secret_detail)
+
+        response = client.post(
+            "/ask",
+            json={"question": "How can I improve password security?"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["detail"],
+            "Invalid QA request.",
+        )
+        self.assertNotIn(secret_detail, response.text)
+
     @patch("main.answer_cybersecurity_question", new_callable=AsyncMock)
     def test_empty_answer_returns_502(self, mock_answer):
         mock_answer.return_value = "   "
