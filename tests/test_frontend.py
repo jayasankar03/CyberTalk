@@ -71,6 +71,7 @@ class FrontendTests(unittest.TestCase):
     role="user",
     admin_users=None,
     admin_detail=None,
+    active_workspace="discussion",
     ):
         """Start the frontend with a mocked authenticated user."""
 
@@ -80,6 +81,7 @@ class FrontendTests(unittest.TestCase):
         )
 
         app.session_state["access_token"] = "test-access-token"
+        app.session_state["active_workspace"] = active_workspace
 
         profile_response = Mock()
         profile_response.ok = True
@@ -162,20 +164,17 @@ class FrontendTests(unittest.TestCase):
 
         self.assertTrue(
             any(
-                "Enter your own stakeholder roles" in element.value
-                for element in app.info
+                "Start a cybersecurity discussion between two stakeholders."
+                in element.value
+                for element in app.caption
             )
         )
 
     def test_empty_cybersecurity_question_is_rejected(self):
-        app = self.run_authenticated_app()
+        app = self.run_authenticated_app(active_workspace="qa")
 
         app.text_input[0].set_value("   ")
-        next(
-            button
-            for button in app.button
-            if button.label == "Ask CyberTalk"
-        ).click().run(timeout=10)
+        app.get("form_submit_button")[0].click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -188,8 +187,8 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_area[0].set_value("AB")
-        app.text_input[1].set_value("Security Architect")
-        app.text_input[2].set_value("Cloud Engineer")
+        app.text_input[0].set_value("Security Architect")
+        app.text_input[1].set_value("Cloud Engineer")
 
         next(
             button
@@ -208,8 +207,8 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_area[0].set_value("Improve network security")
-        app.text_input[1].set_value("A")
-        app.text_input[2].set_value("Cloud Engineer")
+        app.text_input[0].set_value("A")
+        app.text_input[1].set_value("Cloud Engineer")
 
         next(
             button
@@ -229,8 +228,8 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_area[0].set_value("Improve phishing protection")
-        app.text_input[1].set_value("Security Officer")
-        app.text_input[2].set_value(" security officer ")
+        app.text_input[0].set_value("Security Officer")
+        app.text_input[1].set_value(" security officer ")
 
         next(
             button
@@ -258,17 +257,13 @@ class FrontendTests(unittest.TestCase):
 
         mock_post.return_value = mock_response
 
-        app = self.run_authenticated_app()
+        app = self.run_authenticated_app(active_workspace="qa")
 
         app.text_input[0].set_value(
             "How can MFA improve account security?"
         )
 
-        next(
-            button
-            for button in app.button
-            if button.label == "Ask CyberTalk"
-        ).click().run(timeout=10)
+        app.get("form_submit_button")[0].click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -327,8 +322,8 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_area[0].set_value("Improve cloud security")
-        app.text_input[1].set_value("Security Architect")
-        app.text_input[2].set_value("Cloud Engineer")
+        app.text_input[0].set_value("Security Architect")
+        app.text_input[1].set_value("Cloud Engineer")
 
         next(
             button
@@ -402,8 +397,8 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_area[0].set_value("Cloud security")
-        app.text_input[1].set_value("Security Architect")
-        app.text_input[2].set_value("Cloud Engineer")
+        app.text_input[0].set_value("Security Architect")
+        app.text_input[1].set_value("Cloud Engineer")
 
         next(
             button
@@ -477,8 +472,8 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_area[0].set_value("Security monitoring")
-        app.text_input[1].set_value("Security Manager")
-        app.text_input[2].set_value("Operations Manager")
+        app.text_input[0].set_value("Security Manager")
+        app.text_input[1].set_value("Operations Manager")
 
         next(
             button
@@ -508,14 +503,10 @@ class FrontendTests(unittest.TestCase):
 
         mock_post.side_effect = requests.exceptions.ConnectionError()
 
-        app = self.run_authenticated_app()
+        app = self.run_authenticated_app(active_workspace="qa")
 
         app.text_input[0].set_value("How does encryption work?")
-        next(
-            button
-            for button in app.button
-            if button.label == "Ask CyberTalk"
-        ).click().run(timeout=10)
+        app.get("form_submit_button")[0].click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -534,8 +525,8 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_area[0].set_value("Improve cloud security")
-        app.text_input[1].set_value("Security Architect")
-        app.text_input[2].set_value("Cloud Engineer")
+        app.text_input[0].set_value("Security Architect")
+        app.text_input[1].set_value("Cloud Engineer")
 
         next(
             button
@@ -565,8 +556,8 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_area[0].set_value("Improve cloud security")
-        app.text_input[1].set_value("Security Architect")
-        app.text_input[2].set_value("Cloud Engineer")
+        app.text_input[0].set_value("Security Architect")
+        app.text_input[1].set_value("Cloud Engineer")
 
         next(
             button
@@ -593,16 +584,12 @@ class FrontendTests(unittest.TestCase):
 
         mock_post.side_effect = [qa_response, save_response]
 
-        app = self.run_authenticated_app()
+        app = self.run_authenticated_app(active_workspace="qa")
 
         app.text_input[0].set_value(
             "How can MFA protect user accounts?"
         )
-        next(
-            button
-            for button in app.button
-            if button.label == "Ask CyberTalk"
-        ).click().run(timeout=10)
+        app.get("form_submit_button")[0].click().run(timeout=10)
 
         self.assertEqual(mock_post.call_count, 2)
 
@@ -671,8 +658,8 @@ class FrontendTests(unittest.TestCase):
         app = self.run_authenticated_app()
 
         app.text_area[0].set_value("Improve cloud security")
-        app.text_input[1].set_value("Security Architect")
-        app.text_input[2].set_value("Cloud Engineer")
+        app.text_input[0].set_value("Security Architect")
+        app.text_input[1].set_value("Cloud Engineer")
 
         next(
             button

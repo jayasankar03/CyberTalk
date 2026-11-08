@@ -2,9 +2,11 @@
 import json
 import os
 from datetime import datetime, timezone, timedelta
+import time
 
 import requests
 import streamlit as st
+from streamlit_cookies_controller import CookieController
 
 import re
 from io import BytesIO
@@ -312,7 +314,34 @@ API_URL = os.getenv(
 # Authentication
 # -----------------------------
 
+AUTH_COOKIE_NAME = "cybertalk_access_token"
+
+cookie_controller = CookieController(
+    key="cybertalk_auth_cookies"
+)
+
 st.session_state.setdefault("access_token", None)
+
+
+def clear_authentication():
+
+    """Clear both Streamlit and browser authentication state."""
+
+    st.session_state["access_token"] = None
+
+    try:
+        cookie_value = cookie_controller.get(AUTH_COOKIE_NAME)
+
+        if cookie_value is not None:
+            cookie_controller.remove(AUTH_COOKIE_NAME)
+
+    except (TypeError, AttributeError):
+        # The cookie controller may not have browser cookie data
+        # available during Streamlit testing.
+        pass
+
+    st.session_state.pop("qa_result", None)
+    st.session_state.pop("cybertalk_result", None)
 
 
 def get_api_error(response):
@@ -820,7 +849,7 @@ if st.session_state.get("access_token"):
         )
 
         if profile_response.status_code == 401:
-            st.session_state["access_token"] = None
+            clear_authentication()
 
             st.session_state.pop("qa_result", None)
             st.session_state.pop("cybertalk_result", None)
@@ -1219,15 +1248,33 @@ if not st.session_state.get("access_token"):
 
                             login_data = login_response.json()
 
-                            st.session_state["access_token"] = (
-                                login_data["access_token"]
+                            # Store the JWT in Streamlit session state.
+                            access_token = login_data["access_token"]
+
+                            st.session_state["access_token"] = access_token
+
+                            # Persist the JWT in the browser until its actual expiration.
+                            expires_in = int(login_data.get("expires_in", 1800))
+
+                            cookie_controller.set(
+                                AUTH_COOKIE_NAME,
+                                access_token,
+                                max_age=max(1, expires_in),
+                                same_site="lax",
+                                secure=(
+                                    os.getenv(
+                                        "CYBERTALK_COOKIE_SECURE",
+                                        "false"
+                                    ).lower() == "true"
+                                ),
                             )
 
+                            # Close the authentication dialog.
                             st.session_state["show_auth_dialog"] = False
 
-                            st.success("Login successful!")
+                            # Restart the Streamlit script so the newly authenticated
+                            # user is verified and the correct workspace is displayed.
                             st.rerun()
-
                         else:
 
                             st.error(
@@ -1466,7 +1513,7 @@ if not st.session_state.get("access_token"):
 
 # Ensure a valid user profile exists before showing authenticated content.
 if not isinstance(current_user, dict):
-    st.session_state["access_token"] = None
+    clear_authentication()
     st.stop()
 
 
@@ -1534,7 +1581,7 @@ if st.session_state["show_admin_dashboard"]:
 
         if users_response.status_code == 401:
             st.error("Your session has expired. Please sign in again.")
-            st.session_state["access_token"] = None
+            clear_authentication()
             st.session_state["show_admin_dashboard"] = False
             st.stop()
 
@@ -1668,7 +1715,7 @@ if st.session_state["show_admin_dashboard"]:
                 st.error(
                     "Your session has expired. Please sign in again."
                 )
-                st.session_state["access_token"] = None
+                clear_authentication()
                 st.session_state["show_admin_dashboard"] = False
                 st.stop()
 
@@ -1753,7 +1800,7 @@ if st.session_state["show_admin_dashboard"]:
                                     "Your session has expired. "
                                     "Please sign in again."
                                 )
-                                st.session_state["access_token"] = None
+                                clear_authentication()
                                 st.session_state[
                                     "show_admin_dashboard"
                                 ] = False
@@ -1888,7 +1935,7 @@ if st.session_state["show_admin_dashboard"]:
             st.error(
                 "Your session has expired. Please sign in again."
             )
-            st.session_state["access_token"] = None
+            clear_authentication()
             st.session_state["show_admin_dashboard"] = False
             st.stop()
 
@@ -1988,7 +2035,7 @@ if not st.session_state["show_profile"]:
             ).split(";")[0]
 
         elif avatar_response.status_code == 401:
-            st.session_state["access_token"] = None
+            clear_authentication()
             st.warning(
                 "Your session has expired. Please log in again."
             )
@@ -2102,7 +2149,7 @@ if st.session_state["show_profile"]:
             st.info("You have not uploaded a profile picture yet.")
 
         elif picture_response.status_code == 401:
-            st.session_state["access_token"] = None
+            clear_authentication()
             st.error(
                 "Your session has expired. Please log in again."
             )
@@ -2168,7 +2215,7 @@ if st.session_state["show_profile"]:
 
             elif upload_response.status_code == 401:
 
-                st.session_state["access_token"] = None
+                clear_authentication()
 
                 st.error(
                     "Your session has expired. Please log in again."
@@ -2261,7 +2308,7 @@ if st.session_state["show_profile"]:
                         st.error(
                             "Your session has expired. Please log in again."
                         )
-                        st.session_state["access_token"] = None
+                        clear_authentication()
                         st.rerun()
 
                     else:
@@ -2376,7 +2423,7 @@ if st.session_state["show_profile"]:
                         st.success("Password changed successfully!")
 
                     elif response.status_code == 401:
-                        st.session_state["access_token"] = None
+                        clear_authentication()
                         st.error(
                             "Your session has expired. Please log in again."
                         )
@@ -2398,19 +2445,15 @@ if st.session_state["show_profile"]:
         use_container_width=True,
         key="profile_logout",
     ):
-        st.session_state["access_token"] = None
-        st.session_state["show_profile"] = False
+        clear_authentication()
 
+        st.session_state["show_profile"] = False
         st.session_state["edit_profile_open"] = False
         st.session_state["change_password_open"] = False
-
-        st.session_state.pop("qa_result", None)
-        st.session_state.pop("cybertalk_result", None)
 
         st.rerun()
 
     st.stop()
-
 
 @st.dialog("Delete conversation?")
 def confirm_delete_conversation(history_id):
@@ -2598,6 +2641,7 @@ try:
                                         st.session_state["qa_result"] = (
                                             saved_content
                                         )
+                                        st.session_state["active_workspace"] = "qa"
                                         st.session_state.pop(
                                             "cybertalk_result",
                                             None,
@@ -2617,6 +2661,7 @@ try:
                                         st.session_state[
                                             "cybertalk_result"
                                         ] = saved_content
+                                        st.session_state["active_workspace"] = "discussion"
                                         st.session_state.pop(
                                             "qa_result",
                                             None,
@@ -2896,585 +2941,703 @@ except requests.exceptions.RequestException:
 
 
 # -----------------------------
-# Main page heading
+# Main workspace navigation
 # -----------------------------
+
+if "active_workspace" not in st.session_state:
+    st.session_state["active_workspace"] = "home"
 
 render_cybertalk_logo()
-st.subheader("Two Chatbots, One Agreement")
-
-st.write(
-    "Bring two cybersecurity stakeholders together to discuss a topic, "
-    "explore different perspectives, and identify a shared decision."
-)
-
-st.info(
-    "Enter your own stakeholder roles. CyberTalk does not restrict "
-    "you to predefined personas."
-)
 
 
 # -----------------------------
-# Cybersecurity Q&A
+# ChatGPT-style home screen
 # -----------------------------
 
-st.divider()
+if st.session_state["active_workspace"] == "home":
 
-st.header("💬 Ask a Cybersecurity Question")
-
-st.write(
-    "Ask a cybersecurity-related question and get a direct answer "
-    "from the AI assistant. This mode does not generate a stakeholder "
-    "dialogue."
-)
-
-with st.form("qa_form"):
-
-    question = st.text_input(
-        "Your question",
-        placeholder=(
-            "Example: How can I protect my organization from phishing?"
-        ),
-        max_chars=2000,
-    )
-
-    qa_submitted = st.form_submit_button(
-        "Ask CyberTalk",
-        use_container_width=True,
-    )
-
-
-if qa_submitted:
-
-    if not question.strip():
-
-        st.error("Please enter a question.")
-
-    else:
-
-        try:
-
-            with st.spinner(
-                "Checking your question and generating an answer..."
-            ):
-
-                qa_response = requests.post(
-                    f"{API_URL}/ask",
-                    headers=get_auth_headers(),
-                    json={
-                        "question": question.strip()
-                    },
-                    timeout=360,
-                )
-
-            if not qa_response.ok:
-
-                st.error(
-                    f"The CyberTalk API returned "
-                    f"HTTP {qa_response.status_code}: "
-                    f"{get_api_error(qa_response)}"
-                )
-
-            else:
-
-                qa_result = qa_response.json()
-
-                st.session_state["qa_result"] = qa_result
-
-                # Automatically save Q&A history.
-                try:
-
-                    history_response = save_chat_history(
-                        conversation_type="qa",
-                        title=question.strip()[:500],
-                        content={
-                            "question": question.strip(),
-                            "answer": qa_result.get("answer", ""),
-                        },
-                    )
-
-                    if history_response.status_code == 201:
-
-                        st.success(
-                            "Your conversation was saved to chat history."
-                        )
-
-                    else:
-
-                        st.warning(
-                            "Your answer was generated, but could not "
-                            "be saved to chat history."
-                        )
-
-                except requests.exceptions.RequestException:
-
-                    st.warning(
-                        "Your answer was generated, but chat history "
-                        "could not be reached."
-                    )
-
-        except requests.exceptions.Timeout:
-
-            st.error(
-                "The request timed out. Please try again."
-            )
-
-        except requests.exceptions.ConnectionError:
-
-            st.error(
-                "Could not connect to the CyberTalk API. "
-                f"Make sure FastAPI is running at {API_URL}."
-            )
-
-        except requests.exceptions.RequestException as exc:
-
-            st.error(f"Request failed: {exc}")
-
-        except ValueError:
-
-            st.error(
-                "The API returned an invalid JSON response."
-            )
-
-
-# -----------------------------
-# Display Q&A result
-# -----------------------------
-
-qa_result = st.session_state.get("qa_result")
-
-if qa_result:
-
-    st.subheader("Answer")
+    st.title("What would you like to work on?")
 
     st.write(
-        qa_result.get(
-            "answer",
-            "No answer was returned.",
-        )
+        "Welcome to CyberTalk. Choose a workspace to get started."
     )
 
-
-# -----------------------------
-# Stakeholder dialogue input
-# -----------------------------
-
-with st.form("dialogue_form"):
-
-    topic = st.text_area(
-        "Cybersecurity topic",
-        placeholder=(
-            "Example: Should our organization require "
-            "multi-factor authentication for all employees?"
-        ),
-        max_chars=500,
-        help="Enter a topic containing at least 3 characters.",
-    )
+    st.divider()
 
     col1, col2 = st.columns(2)
 
     with col1:
 
-        stakeholder_1 = st.text_input(
-            "Stakeholder 1",
-            placeholder="Example: Chief Information Security Officer",
-            max_chars=100,
+        st.subheader("New Discussion")
+
+        st.write(
+            "Bring two cybersecurity stakeholders together, "
+            "explore different perspectives, and work towards "
+            "a shared decision."
         )
+
+        if st.button(
+            "Start a New Discussion",
+            type="primary",
+            use_container_width=True,
+        ):
+
+            st.session_state["active_workspace"] = "discussion"
+            st.rerun()
 
     with col2:
 
-        stakeholder_2 = st.text_input(
-            "Stakeholder 2",
-            placeholder="Example: IT Operations Manager",
-            max_chars=100,
+        st.subheader("Ask CyberTalk")
+
+        st.write(
+            "Ask an individual cybersecurity question and "
+            "receive a direct answer from the AI assistant."
         )
 
-    rounds = st.number_input(
-        "Number of discussion rounds",
-        min_value=1,
-        max_value=5,
-        value=2,
-        step=1,
-        help=(
-            "Each round includes one response from each stakeholder. "
-            "Two additional closing statements are generated afterward."
-        ),
-    )
+        if st.button(
+            "Ask a Question",
+            use_container_width=True,
+        ):
 
-    submitted = st.form_submit_button(
-        "Generate CyberTalk Dialogue",
-        type="primary",
+            st.session_state["active_workspace"] = "qa"
+            st.rerun()
+
+    # Do not display either workspace on the home screen.
+    st.stop()
+
+
+# -----------------------------
+# Workspace navigation
+# -----------------------------
+
+nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 3])
+
+with nav_col1:
+
+    if st.button(
+        "New Discussion",
         use_container_width=True,
-    )
-
-
-# -----------------------------
-# Validate and call dialogue API
-# -----------------------------
-
-if submitted:
-
-    errors = []
-
-    if len(topic.strip()) < 3:
-
-        errors.append(
-            "Enter a topic containing at least 3 characters."
-        )
-
-    if len(stakeholder_1.strip()) < 2:
-
-        errors.append(
-            "Stakeholder 1 must contain at least 2 characters."
-        )
-
-    if len(stakeholder_2.strip()) < 2:
-
-        errors.append(
-            "Stakeholder 2 must contain at least 2 characters."
-        )
-
-    if (
-        stakeholder_1.strip().casefold()
-        == stakeholder_2.strip().casefold()
+        type=(
+            "primary"
+            if st.session_state["active_workspace"] == "discussion"
+            else "secondary"
+        ),
     ):
 
-        errors.append(
-            "Please provide two different stakeholders."
+        st.session_state["active_workspace"] = "discussion"
+        st.rerun()
+
+with nav_col2:
+
+    if st.button(
+        "Ask CyberTalk",
+        use_container_width=True,
+        type=(
+            "primary"
+            if st.session_state["active_workspace"] == "qa"
+            else "secondary"
+        ),
+    ):
+
+        st.session_state["active_workspace"] = "qa"
+        st.rerun()
+
+with nav_col3:
+
+    if st.button(
+        "Home",
+        use_container_width=False,
+    ):
+
+        st.session_state["active_workspace"] = "home"
+        st.rerun()
+
+
+# -----------------------------
+# Selected workspace heading
+# -----------------------------
+
+if st.session_state["active_workspace"] == "discussion":
+
+    st.subheader("New Discussion")
+
+    st.caption(
+        "Start a cybersecurity discussion between two stakeholders."
+    )
+
+elif st.session_state["active_workspace"] == "qa":
+
+    st.subheader("Ask CyberTalk")
+
+    st.caption(
+        "Ask a cybersecurity question and receive a direct answer."
+    )
+if st.session_state["active_workspace"] == "qa":
+    # -----------------------------
+    # Cybersecurity Q&A
+    # -----------------------------
+
+    st.divider()
+
+    st.header("💬 Ask a Cybersecurity Question")
+
+    st.write(
+        "Ask a cybersecurity-related question and get a direct answer "
+        "from the AI assistant. This mode does not generate a stakeholder "
+        "dialogue."
+    )
+
+    with st.form("qa_form"):
+
+        question = st.text_input(
+            "Your question",
+            placeholder=(
+                "Example: How can I protect my organization from phishing?"
+            ),
+            max_chars=2000,
         )
 
-    if errors:
+        qa_submitted = st.form_submit_button(
+            "Ask CyberTalk",
+            use_container_width=True,
+        )
 
-        for error in errors:
-            st.error(error)
 
-    else:
+    if qa_submitted:
 
-        payload = {
-            "topic": topic.strip(),
-            "stakeholder_1": stakeholder_1.strip(),
-            "stakeholder_2": stakeholder_2.strip(),
-            "rounds": int(rounds),
-        }
+        if not question.strip():
 
-        try:
+            st.error("Please enter a question.")
 
-            with st.spinner(
-                "Generating the discussion and evaluating agreement. "
-                "This may take several minutes..."
-            ):
+        else:
 
-                response = requests.post(
-                    f"{API_URL}/dialogue",
-                    headers=get_auth_headers(),
-                    json=payload,
-                    timeout=900,
-                )
+            try:
 
-            if not response.ok:
+                with st.spinner(
+                    "Checking your question and generating an answer..."
+                ):
 
-                st.error(
-                    f"The CyberTalk API returned "
-                    f"HTTP {response.status_code}: "
-                    f"{get_api_error(response)}"
-                )
-
-            else:
-
-                result = response.json()
-
-                # Keep the complete result available during reruns.
-                st.session_state["cybertalk_result"] = result
-
-                # Automatically save dialogue history.
-                try:
-
-                    history_response = save_chat_history(
-                        conversation_type="dialogue",
-                        title=result.get(
-                            "topic",
-                            "CyberTalk Discussion",
-                        )[:500],
-                        content=result,
+                    qa_response = requests.post(
+                        f"{API_URL}/ask",
+                        headers=get_auth_headers(),
+                        json={
+                            "question": question.strip()
+                        },
+                        timeout=360,
                     )
 
-                    if history_response.status_code == 201:
+                if not qa_response.ok:
 
-                        st.success(
-                            "Your dialogue was saved to chat history."
+                    st.error(
+                        f"The CyberTalk API returned "
+                        f"HTTP {qa_response.status_code}: "
+                        f"{get_api_error(qa_response)}"
+                    )
+
+                else:
+
+                    qa_result = qa_response.json()
+
+                    st.session_state["qa_result"] = qa_result
+
+                    # Automatically save Q&A history.
+                    try:
+
+                        history_response = save_chat_history(
+                            conversation_type="qa",
+                            title=question.strip()[:500],
+                            content={
+                                "question": question.strip(),
+                                "answer": qa_result.get("answer", ""),
+                            },
                         )
 
-                    else:
+                        if history_response.status_code == 201:
+
+                            st.success(
+                                "Your conversation was saved to chat history."
+                            )
+
+                        else:
+
+                            st.warning(
+                                "Your answer was generated, but could not "
+                                "be saved to chat history."
+                            )
+
+                    except requests.exceptions.RequestException:
 
                         st.warning(
-                            "The dialogue was generated, but could not "
-                            "be saved to chat history."
+                            "Your answer was generated, but chat history "
+                            "could not be reached."
                         )
 
-                except requests.exceptions.RequestException:
+            except requests.exceptions.Timeout:
 
-                    st.warning(
-                        "The dialogue was generated, but chat history "
-                        "could not be reached."
+                st.error(
+                    "The request timed out. Please try again."
+                )
+
+            except requests.exceptions.ConnectionError:
+
+                st.error(
+                    "Could not connect to the CyberTalk API. "
+                    f"Make sure FastAPI is running at {API_URL}."
+                )
+
+            except requests.exceptions.RequestException as exc:
+
+                st.error(f"Request failed: {exc}")
+
+            except ValueError:
+
+                st.error(
+                    "The API returned an invalid JSON response."
+                )
+
+
+    # -----------------------------
+    # Display Q&A result
+    # -----------------------------
+
+    qa_result = st.session_state.get("qa_result")
+
+    if qa_result:
+
+        st.subheader("Answer")
+
+        st.write(
+            qa_result.get(
+                "answer",
+                "Noanswer was returned.",
+            )
+        )
+
+# -----------------------------
+# Stakeholder dialogue workspace
+# -----------------------------
+if st.session_state["active_workspace"] == "discussion":
+    # -----------------------------
+    # Stakeholder dialogue input
+    # -----------------------------
+
+    with st.form("dialogue_form"):
+
+        topic = st.text_area(
+            "Cybersecurity topic",
+            placeholder=(
+                "Example: Should our organization require "
+                "multi-factor authentication for all employees?"
+            ),
+            max_chars=500,
+            help="Enter a topic containing at least 3 characters.",
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            stakeholder_1 = st.text_input(
+                "Stakeholder 1",
+                placeholder="Example: Chief Information Security Officer",
+                max_chars=100,
+            )
+
+        with col2:
+
+            stakeholder_2 = st.text_input(
+                "Stakeholder 2",
+                placeholder="Example: IT Operations Manager",
+                max_chars=100,
+            )
+
+        rounds = st.number_input(
+            "Number of discussion rounds",
+            min_value=1,
+            max_value=5,
+            value=2,
+            step=1,
+            help=(
+                "Each round includes one response from each stakeholder. "
+                "Two additional closing statements are generated afterward."
+            ),
+        )
+
+        submitted = st.form_submit_button(
+            "Generate CyberTalk Dialogue",
+            type="primary",
+            use_container_width=True,
+        )
+
+
+    # -----------------------------
+    # Validate and call dialogue API
+    # -----------------------------
+
+    if submitted:
+
+        errors = []
+
+        if len(topic.strip()) < 3:
+
+            errors.append(
+                "Enter a topic containing at least 3 characters."
+            )
+
+        if len(stakeholder_1.strip()) < 2:
+
+            errors.append(
+                "Stakeholder 1 must contain at least 2 characters."
+            )
+
+        if len(stakeholder_2.strip()) < 2:
+
+            errors.append(
+                "Stakeholder 2 must contain at least 2 characters."
+            )
+
+        if (
+            stakeholder_1.strip().casefold()
+            == stakeholder_2.strip().casefold()
+        ):
+
+            errors.append(
+                "Please provide two different stakeholders."
+            )
+
+        if errors:
+
+            for error in errors:
+                st.error(error)
+
+        else:
+
+            payload = {
+                "topic": topic.strip(),
+                "stakeholder_1": stakeholder_1.strip(),
+                "stakeholder_2": stakeholder_2.strip(),
+                "rounds": int(rounds),
+            }
+
+            try:
+
+                with st.spinner(
+                    "Generating the discussion and evaluating agreement. "
+                    "This may take several minutes..."
+                ):
+
+                    response = requests.post(
+                        f"{API_URL}/dialogue",
+                        headers=get_auth_headers(),
+                        json=payload,
+                        timeout=900,
                     )
 
-        except requests.exceptions.Timeout:
+                if not response.ok:
 
-            st.error(
-                "The request timed out. The local AI model may need "
-                "more time. Please try again."
-            )
+                    st.error(
+                        f"The CyberTalk API returned "
+                        f"HTTP {response.status_code}: "
+                        f"{get_api_error(response)}"
+                    )
 
-        except requests.exceptions.ConnectionError:
+                else:
 
-            st.error(
-                "Could not connect to the CyberTalk API. Make sure "
-                "FastAPI is running at "
-                f"{API_URL}."
-            )
+                    result = response.json()
 
-        except requests.exceptions.RequestException as exc:
+                    # Keep the complete result available during reruns.
+                    st.session_state["cybertalk_result"] = result
 
-            st.error(f"Request failed: {exc}")
+                    # Automatically save dialogue history.
+                    try:
 
-        except ValueError:
+                        history_response = save_chat_history(
+                            conversation_type="dialogue",
+                            title=result.get(
+                                "topic",
+                                "CyberTalk Discussion",
+                            )[:500],
+                            content=result,
+                        )
 
-            st.error(
-                "The API returned an invalid JSON response."
-            )
+                        if history_response.status_code == 201:
+
+                            st.success(
+                                "Your dialogue was saved to chat history."
+                            )
+
+                        else:
+
+                            st.warning(
+                                "The dialogue was generated, but could not "
+                                "be saved to chat history."
+                            )
+
+                    except requests.exceptions.RequestException:
+
+                        st.warning(
+                            "The dialogue was generated, but chat history "
+                            "could not be reached."
+                        )
+
+            except requests.exceptions.Timeout:
+
+                st.error(
+                    "The request timed out. The local AI model may need "
+                    "more time. Please try again."
+                )
+
+            except requests.exceptions.ConnectionError:
+
+                st.error(
+                    "Could not connect to the CyberTalk API. Make sure "
+                    "FastAPI is running at "
+                    f"{API_URL}."
+                )
+
+            except requests.exceptions.RequestException as exc:
+
+                st.error(f"Request failed: {exc}")
+
+            except ValueError:
+
+                st.error(
+                    "The API returned an invalid JSON response."
+                )
 
 
-
-# -----------------------------
-# Display stakeholder dialogue
-# -----------------------------
-
-result = st.session_state.get("cybertalk_result")
-
-if result:
-
-    st.divider()
-    st.header("Discussion Results")
-
-    st.markdown(
-        f"**Topic:** {result.get('topic', 'Not provided')}"
-    )
-
-    stakeholders = result.get("stakeholders", [])
-
-    stakeholder_names = [
-        item.get("name", "Unknown stakeholder")
-        for item in stakeholders
-    ]
-
-    if stakeholder_names:
-
-        st.markdown(
-            "**Stakeholders:** "
-            + " and ".join(stakeholder_names)
-        )
-
-    st.markdown(
-        f"**Discussion rounds:** "
-        f"{result.get('rounds', 'Unknown')}"
-    )
 
     # -----------------------------
-    # AI performance metrics
+    # Display stakeholder dialogue
     # -----------------------------
 
-    performance = result.get("performance", {})
+    result = st.session_state.get("cybertalk_result")
 
-    if isinstance(performance, dict) and performance:
+    if result:
 
         st.divider()
-        st.subheader("AI Performance")
+        st.header("Discussion Results")
 
-        perf_col1, perf_col2, perf_col3 = st.columns(3)
-
-        perf_col1.metric(
-            "Dialogue generation",
-            f"{performance.get('generation_seconds', 0):.2f} s",
+        st.markdown(
+            f"**Topic:** {result.get('topic', 'Not provided')}"
         )
 
-        perf_col2.metric(
-            "Agreement evaluation",
-            f"{performance.get('evaluation_seconds', 0):.2f} s",
-        )
+        stakeholders = result.get("stakeholders", [])
 
-        perf_col3.metric(
-            "Total processing time",
-            f"{performance.get('total_seconds', 0):.2f} s",
-        )
+        stakeholder_names = [
+            item.get("name", "Unknown stakeholder")
+            for item in stakeholders
+        ]
 
-        st.caption(
-            "Dialogue entries generated: "
-            f"{performance.get('dialogue_entries', 0)}"
-        )
-
-    st.caption(
-        "The final two statements are closing statements, "
-        "in addition to the requested discussion rounds."
-    )
-
-    # -----------------------------
-    # Stakeholder discussion
-    # -----------------------------
-
-    st.divider()
-    st.subheader("Stakeholder Dialogue")
-
-    st.caption(
-        "Follow the discussion between the two stakeholders."
-    )
-
-    # Assign distinct chat styles dynamically.
-    speaker_roles = {}
-
-    if len(stakeholder_names) >= 2:
-
-        speaker_roles = {
-            stakeholder_names[0].strip().casefold(): "user",
-            stakeholder_names[1].strip().casefold(): "assistant",
-        }
-
-    dialogue = result.get("dialogue", [])
-
-    if not dialogue:
-
-        st.warning(
-            "The API returned no dialogue entries."
-        )
-
-    for entry in dialogue:
-
-        turn_number = entry.get("turn", "?")
-
-        speaker = entry.get(
-            "speaker",
-            "Unknown stakeholder",
-        )
-
-        message = entry.get("message", "")
-
-        speaker_role = speaker_roles.get(
-            speaker.strip().casefold(),
-            "assistant",
-        )
-
-        with st.chat_message(speaker_role):
+        if stakeholder_names:
 
             st.markdown(
-                f"**Turn {turn_number} — {speaker}**"
+                "**Stakeholders:** "
+                + " and ".join(stakeholder_names)
             )
 
-            st.write(message)
-
-    # -----------------------------
-    # Final agreement evaluation
-    # -----------------------------
-
-    st.divider()
-    st.subheader("Final Agreement Evaluation")
-
-    agreement = result.get("agreement", {})
-
-    if not isinstance(agreement, dict):
-        agreement = {}
-
-    status = agreement.get("status", "unknown")
-
-    explanation = agreement.get(
-        "explanation",
-        "No explanation was provided.",
-    )
-
-    status_labels = {
-        "agreement_reached": "Agreement reached",
-        "partial_agreement": "Partial agreement",
-        "no_agreement": "No agreement",
-    }
-
-    status_label = status_labels.get(
-        status,
-        status.replace("_", " ").title(),
-    )
-
-    st.markdown(f"**Status:** {status_label}")
-
-    # Give each agreement outcome a distinct visual treatment.
-    if status == "agreement_reached":
-
-        st.success(explanation)
-
-    elif status == "partial_agreement":
-
-        st.warning(explanation)
-
-    elif status == "no_agreement":
-
-        st.error(explanation)
-
-    else:
-
-        st.info(explanation)
-
-    # -----------------------------
-    # Shared decision
-    # -----------------------------
-
-    st.markdown("**Shared decision**")
-
-    shared_decision = agreement.get("shared_decision")
-
-    if shared_decision:
-
-        st.success(shared_decision)
-
-    else:
-
-        st.warning(
-            "The evaluator did not identify a confirmed shared decision."
+        st.markdown(
+            f"**Discussion rounds:** "
+            f"{result.get('rounds', 'Unknown')}"
         )
 
-    # -----------------------------
-    # Unresolved disagreements
-    # -----------------------------
+        # -----------------------------
+        # AI performance metrics
+        # -----------------------------
 
-    st.markdown("**Unresolved disagreements**")
+        performance = result.get("performance", {})
 
-    unresolved = agreement.get(
-        "unresolved_disagreements",
-        [],
-    )
+        if isinstance(performance, dict) and performance:
 
-    if unresolved:
+            st.divider()
+            st.subheader("AI Performance")
 
-        for disagreement in unresolved:
+            perf_col1, perf_col2, perf_col3 = st.columns(3)
 
-            st.warning(disagreement)
+            perf_col1.metric(
+                "Dialogue generation",
+                f"{performance.get('generation_seconds', 0):.2f} s",
+            )
 
-    else:
+            perf_col2.metric(
+                "Agreement evaluation",
+                f"{performance.get('evaluation_seconds', 0):.2f} s",
+            )
 
-        st.write(
-            "No unresolved disagreements were reported."
+            perf_col3.metric(
+                "Total processing time",
+                f"{performance.get('total_seconds', 0):.2f} s",
+            )
+
+            st.caption(
+                "Dialogue entries generated: "
+                f"{performance.get('dialogue_entries', 0)}"
+            )
+
+        st.caption(
+            "The final two statements are closing statements, "
+            "in addition to the requested discussion rounds."
         )
 
-    # -----------------------------
-    # Recommended next actions
-    # -----------------------------
+        # -----------------------------
+        # Stakeholder discussion
+        # -----------------------------
 
-    st.markdown("**Next actions**")
+        st.divider()
+        st.subheader("Stakeholder Dialogue")
 
-    next_actions = agreement.get("next_actions", [])
-
-    if next_actions:
-
-        for index, action in enumerate(next_actions, start=1):
-
-            st.write(f"{index}. {action}")
-
-    else:
-
-        st.write(
-            "No next actions were reported."
+        st.caption(
+            "Follow the discussion between the two stakeholders."
         )
+
+        # Assign distinct chat styles dynamically.
+        speaker_roles = {}
+
+        if len(stakeholder_names) >= 2:
+
+            speaker_roles = {
+                stakeholder_names[0].strip().casefold(): "user",
+                stakeholder_names[1].strip().casefold(): "assistant",
+            }
+
+        dialogue = result.get("dialogue", [])
+
+        if not dialogue:
+
+            st.warning(
+                "The API returned no dialogue entries."
+            )
+
+        for entry in dialogue:
+
+            turn_number = entry.get("turn", "?")
+
+            speaker = entry.get(
+                "speaker",
+                "Unknown stakeholder",
+            )
+
+            message = entry.get("message", "")
+
+            speaker_role = speaker_roles.get(
+                speaker.strip().casefold(),
+                "assistant",
+            )
+
+            with st.chat_message(speaker_role):
+
+                st.markdown(
+                    f"**Turn {turn_number} — {speaker}**"
+                )
+
+                st.write(message)
+
+        # -----------------------------
+        # Final agreement evaluation
+        # -----------------------------
+
+        st.divider()
+        st.subheader("Final Agreement Evaluation")
+
+        agreement = result.get("agreement", {})
+
+        if not isinstance(agreement, dict):
+            agreement = {}
+
+        status = agreement.get("status", "unknown")
+
+        explanation = agreement.get(
+            "explanation",
+            "No explanation was provided.",
+        )
+
+        status_labels = {
+            "agreement_reached": "Agreement reached",
+            "partial_agreement": "Partial agreement",
+            "no_agreement": "No agreement",
+        }
+
+        status_label = status_labels.get(
+            status,
+            status.replace("_", " ").title(),
+        )
+
+        st.markdown(f"**Status:** {status_label}")
+
+        # Give each agreement outcome a distinct visual treatment.
+        if status == "agreement_reached":
+
+            st.success(explanation)
+
+        elif status == "partial_agreement":
+
+            st.warning(explanation)
+
+        elif status == "no_agreement":
+
+            st.error(explanation)
+
+        else:
+
+            st.info(explanation)
+
+        # -----------------------------
+        # Shared decision
+        # -----------------------------
+
+        st.markdown("**Shared decision**")
+
+        shared_decision = agreement.get("shared_decision")
+
+        if shared_decision:
+
+            st.success(shared_decision)
+
+        else:
+
+            st.warning(
+                "The evaluator did not identify a confirmed shared decision."
+            )
+
+        # -----------------------------
+        # Unresolved disagreements
+        # -----------------------------
+
+        st.markdown("**Unresolved disagreements**")
+
+        unresolved = agreement.get(
+            "unresolved_disagreements",
+            [],
+        )
+
+        if unresolved:
+
+            for disagreement in unresolved:
+
+                st.warning(disagreement)
+
+        else:
+
+            st.write(
+                "No unresolved disagreements were reported."
+            )
+
+        # -----------------------------
+        # Recommended next actions
+        # -----------------------------
+
+        st.markdown("**Next actions**")
+
+        next_actions = agreement.get("next_actions", [])
+
+        if next_actions:
+
+            for index, action in enumerate(next_actions, start=1):
+
+                st.write(f"{index}. {action}")
+
+        else:
+
+            st.write(
+                "No next actions were reported."
+            )
