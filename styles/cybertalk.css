@@ -1,0 +1,663 @@
+
+/* =========================================
+   CyberTalk - Global Frontend Styles
+   ========================================= */
+
+/* Conversation three-dot menu trigger */
+div[class*="st-key-history_menu_popover_"] button {
+    min-width: 36px !important;
+    min-height: 32px !important;
+    padding: 0 8px !important;
+    border: none !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: #d1d5db !important;
+    box-shadow: none !important;
+    font-size: 23px !important;
+    line-height: 1 !important;
+}
+
+div[class*="st-key-history_menu_popover_"] button:hover {
+    background: rgba(255, 255, 255, 0.10) !important;
+    color: #ffffff !important;
+}
+
+div[class*="st-key-history_menu_popover_"] button:focus {
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* Remove automatic popover arrow */
+div[class*="st-key-history_menu_popover_"]
+[data-testid="stPopoverButton"] svg {
+    display: none !important;
+}
+
+/* Compact three-dot trigger */
+div[class*="st-key-history_menu_popover_"]
+[data-testid="stPopoverButton"] {
+    min-width: 36px !important;
+    width: 36px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #ffffff !important;
+    font-size: 23px !important;
+}
+
+/* Stakeholder conversation messages */
+[data-testid="stChatMessage"] {
+    background: rgba(18, 38, 60, 0.72);
+    border: 1px solid #294663;
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+    transition: border-color 0.2s ease;
+}
+
+[data-testid="stChatMessage"]:hover {
+    border-color: #168acb;
+}
+
+/* Conversation message text */
+[data-testid="stChatMessage"] p {
+    color: #e2ebf7;
+    line-height: 1.75;
+    font-size: 15px;
+}
+
+/* Stakeholder names and turn labels */
+[data-testid="stChatMessage"] strong {
+    color: #19c9f4;
+    font-weight: 700;
+}
+
+/* Input focus styling */
+.stTextInput input:focus,
+.stTextArea textarea:focus {
+    border-color: #19a9e5 !important;
+    box-shadow: 0 0 0 1px #19a9e5 !important;
+}
+
+/* Better text area readability */
+.stTextArea textarea {
+    line-height: 1.6;
+    padding: 12px;
+}
+
+/* Remove outer box around selected conversation actions */
+div[class*="st-key-history_action_panel_"] {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+}
+
+div[class*="st-key-history_action_panel_"] > div {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+/* Conversation action buttons */
+div[class*="st-key-menu_rename_"] button,
+div[class*="st-key-menu_share_"] button,
+div[class*="st-key-menu_download_"] button,
+div[class*="st-key-menu_delete_"] button {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #e2e8f0 !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    padding: 8px 12px !important;
+}
+
+/* Action button hover */
+div[class*="st-key-menu_rename_"] button:hover,
+div[class*="st-key-menu_share_"] button:hover,
+div[class*="st-key-menu_download_"] button:hover,
+div[class*="st-key-menu_delete_"] button:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Responsive conversation spacing */
+@media (max-width: 700px) {
+    [data-testid="stChatMessage"] {
+        padding: 13px;
+        border-radius: 11px;
+    }
+}
+
+/* =========================================================
+   CYBERTALK – MAIN APPLICATION LAYOUT REFINEMENT
+   Step 1.1
+   ========================================================= */
+
+/* Main application background */
+.stApp {
+    background-color: var(--background-color);
+}
+
+/* Main content container */
+[data-testid="stMainBlockContainer"] {
+    max-width: 1440px;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+}
+
+/* Improve vertical spacing between main sections */
+[data-testid="stVerticalBlock"] {
+    gap: 1rem;
+}
+
+/* Improve sidebar spacing */
+[data-testid="stSidebarContent"] {
+    padding-top: 1.25rem;
+}
+
+/* Consistent heading appearance */
+[data-testid="stMainBlockContainer"] h1 {
+    letter-spacing: -0.6px;
+    font-weight: 700;
+}
+
+[data-testid="stMainBlockContainer"] h2,
+[data-testid="stMainBlockContainer"] h3 {
+    letter-spacing: -0.3px;
+    font-weight: 650;
+}
+
+/* Improve horizontal divider appearance */
+[data-testid="stMainBlockContainer"] hr {
+    margin-top: 1.25rem;
+    margin-bottom: 1.25rem;
+    opacity: 0.35;
+}
+
+/* Responsive layout – tablets and smaller screens */
+@media (max-width: 992px) {
+    [data-testid="stMainBlockContainer"] {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+}
+
+/* Responsive layout – mobile screens */
+@media (max-width: 640px) {
+    [data-testid="stMainBlockContainer"] {
+        padding-top: 1rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+        padding-bottom: 2rem;
+    }
+
+    [data-testid="stVerticalBlock"] {
+        gap: 0.75rem;
+    }
+}
+
+/* =========================================================
+   CYBERTALK – HOME PAGE REFINEMENT
+   Step 2.2
+   ========================================================= */
+
+/* Hero section */
+.about-hero {
+    max-width: 1050px;
+    margin: 4rem auto 4.5rem auto;
+    padding: 3.5rem 2rem;
+    text-align: center;
+    background: linear-gradient(
+        145deg,
+        rgba(17, 42, 67, 0.85),
+        rgba(9, 23, 39, 0.95)
+    );
+    border: 1px solid #254968;
+    border-radius: 20px;
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.18);
+}
+
+/* Hero eyebrow */
+.about-eyebrow {
+    color: #38bdf8;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    margin-bottom: 20px;
+}
+
+/* Hero title */
+.about-hero h1 {
+    color: #f1f7ff;
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 750;
+    line-height: 1.2;
+    letter-spacing: -1.5px;
+    margin-bottom: 22px;
+}
+
+/* Hero description */
+.about-hero p {
+    max-width: 760px;
+    margin: 0 auto;
+    color: #b8c9dc;
+    font-size: 16px;
+    line-height: 1.9;
+}
+
+/* Feature grid */
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    margin: 1.5rem 0 3rem 0;
+}
+
+/* Individual feature cards */
+.feature-card {
+    min-height: 205px;
+    padding: 25px;
+    background: linear-gradient(
+        145deg,
+        #10263c,
+        #0b1b2d
+    );
+    border: 1px solid #29445f;
+    border-radius: 14px;
+    transition:
+        transform 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+/* Feature card hover */
+.feature-card:hover {
+    transform: translateY(-4px);
+    border-color: #168acb;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.22);
+}
+
+/* Feature numbering */
+.feature-number {
+    color: #38bdf8;
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 1.5px;
+    margin-bottom: 18px;
+}
+
+/* Feature titles */
+.feature-card h3 {
+    color: #eaf3ff;
+    font-size: 19px;
+    font-weight: 650;
+    margin-bottom: 12px;
+}
+
+/* Feature descriptions */
+.feature-card p {
+    color: #aebfd2;
+    font-size: 14px;
+    line-height: 1.75;
+    margin-bottom: 0;
+}
+
+/* Landing page responsive layout */
+@media (max-width: 900px) {
+    .feature-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+    }
+
+    .about-hero {
+        margin-top: 2.5rem;
+        padding: 2.5rem 1.5rem;
+    }
+}
+
+/* Mobile layout */
+@media (max-width: 600px) {
+    .about-hero {
+        margin: 1.5rem auto 2.5rem auto;
+        padding: 2rem 1.2rem;
+        border-radius: 14px;
+    }
+
+    .about-hero h1 {
+        font-size: 32px;
+        letter-spacing: -0.8px;
+    }
+
+    .about-hero p {
+        font-size: 14px;
+        line-height: 1.75;
+    }
+
+    .about-eyebrow {
+        font-size: 10px;
+        letter-spacing: 2px;
+    }
+
+    .feature-grid {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .feature-card {
+        min-height: auto;
+        padding: 22px;
+    }
+
+    .feature-card h3 {
+        font-size: 18px;
+    }
+}
+
+/* Fix: Keep landing page hero title centered */
+.about-hero {
+    width: 100%;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    text-align: center !important;
+}
+
+.about-hero h1 {
+    width: 100%;
+    text-align: center !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+.about-hero p {
+    text-align: center !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+/* =========================================================
+   CYBERTALK – DISCUSSION WORKSPACE
+   Step 3.2.1 – Input Form Refinement
+   ========================================================= */
+
+/* Discussion workspace heading */
+.st-key-dialogue_form {
+    width: 100%;
+}
+
+/* Discussion form spacing */
+.st-key-dialogue_form [data-testid="stForm"] {
+    background: transparent;
+    border: none;
+    padding: 8px 0;
+}
+
+/* Topic and participant labels */
+.st-key-dialogue_form label {
+    color: #dce9f7;
+    font-weight: 600;
+}
+
+/* Topic input */
+.st-key-dialogue_form textarea {
+    min-height: 120px;
+    line-height: 1.7;
+    border-radius: 10px;
+}
+
+/* Stakeholder text inputs */
+.st-key-dialogue_form input {
+    border-radius: 9px;
+    min-height: 42px;
+}
+
+/* Discussion settings */
+.st-key-dialogue_form [data-testid="stNumberInput"] {
+    max-width: 260px;
+}
+
+/* Input focus */
+.st-key-dialogue_form input:focus,
+.st-key-dialogue_form textarea:focus {
+    border-color: #19a9e5 !important;
+    box-shadow: 0 0 0 1px #19a9e5 !important;
+}
+
+/* Generate discussion button */
+.st-key-dialogue_form button[kind="primaryFormSubmit"] {
+    min-height: 48px;
+    border-radius: 10px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    transition: all 0.2s ease;
+}
+
+/* Button hover */
+.st-key-dialogue_form button[kind="primaryFormSubmit"]:hover {
+    box-shadow: 0 5px 16px rgba(25, 169, 229, 0.22);
+    transform: translateY(-1px);
+}
+
+/* Discussion workspace headings */
+[data-testid="stMainBlockContainer"] h2,
+[data-testid="stMainBlockContainer"] h3 {
+    margin-bottom: 0.6rem;
+}
+
+/* Mobile discussion form */
+@media (max-width: 640px) {
+    .st-key-dialogue_form textarea {
+        min-height: 105px;
+    }
+
+    .st-key-dialogue_form button[kind="primaryFormSubmit"] {
+        min-height: 46px;
+    }
+
+    .st-key-dialogue_form [data-testid="stNumberInput"] {
+        max-width: 100%;
+    }
+}
+/* =========================================================
+   CYBERTALK – DISCUSSION WORKSPACE
+   Step 3.3.1 – Stakeholder Dialogue Presentation
+   ========================================================= */
+
+/* Conversation message spacing */
+[data-testid="stChatMessage"] {
+    border: 1px solid rgba(120, 160, 190, 0.16);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    background: rgba(30, 45, 62, 0.30);
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+/* Subtle hover effect */
+[data-testid="stChatMessage"]:hover {
+    border-color: rgba(25, 169, 229, 0.35);
+    background: rgba(30, 55, 75, 0.38);
+}
+
+/* Message content readability */
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] {
+    line-height: 1.75;
+    font-size: 0.96rem;
+}
+
+/* Consistent paragraph spacing */
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
+    margin-bottom: 0.65rem;
+}
+
+/* Speaker avatar alignment */
+[data-testid="stChatMessage"] [data-testid="stChatMessageAvatar"] {
+    margin-top: 3px;
+}
+
+/* Discussion result heading */
+[data-testid="stMainBlockContainer"] h2 {
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+/* Mobile conversation layout */
+@media (max-width: 640px) {
+    [data-testid="stChatMessage"] {
+        padding: 12px;
+        margin-bottom: 10px;
+    }
+
+    [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] {
+        font-size: 0.92rem;
+        line-height: 1.65;
+    }
+}
+/* =========================================================
+   CYBERTALK – DISCUSSION WORKSPACE
+   Step 3.3.2 – Stakeholder Identity and Dialogue Hierarchy
+   ========================================================= */
+
+/* Stakeholder identity line */
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p:first-child {
+    margin-bottom: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid rgba(25, 169, 229, 0.20);
+}
+
+/* Speaker name and turn number */
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p:first-child strong {
+    color: #42bdf2;
+    font-size: 0.94rem;
+    font-weight: 700;
+    letter-spacing: 0.25px;
+}
+
+/* Dialogue message content */
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] {
+    line-height: 1.75;
+}
+
+/* Improve readability of longer stakeholder responses */
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
+    overflow-wrap: anywhere;
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+    [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p:first-child {
+        margin-bottom: 9px;
+        padding-bottom: 7px;
+    }
+}
+/* =========================================================
+   CYBERTALK - MY PROFILE WORKSPACE
+   ========================================================= */
+
+/* Circular profile picture */
+div.st-key-profile_avatar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 18px auto 8px auto;
+}
+
+div.st-key-profile_avatar img {
+    width: 132px !important;
+    height: 132px !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    object-position: center;
+    border: 3px solid #2196d2;
+    box-shadow: 0 5px 22px rgba(25, 169, 229, 0.20);
+}
+
+/* Profile picture placeholder */
+.profile-avatar-placeholder {
+    width: 132px;
+    height: 132px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(145deg, #163c5b, #10263c);
+    border: 3px solid #2196d2;
+    color: #e2f3ff;
+    font-size: 48px;
+}
+
+/* Update Profile - text only */
+div.st-key-open_edit_profile button {
+    width: auto !important;
+    min-height: 30px !important;
+    padding: 2px 8px !important;
+    margin: 0 auto !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #38bdf8 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+}
+
+div.st-key-open_edit_profile button:hover {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #7dd3fc !important;
+    text-decoration: underline;
+}
+
+div.st-key-open_edit_profile {
+    display: flex;
+    justify-content: center;
+}
+
+/* Profile information sections */
+.profile-section {
+    padding: 20px 22px;
+    margin: 14px 0;
+    background: rgba(18, 38, 60, 0.55);
+    border: 1px solid #294663;
+    border-radius: 13px;
+}
+
+.profile-section h3 {
+    color: #e5f2ff;
+    font-size: 17px;
+    margin-bottom: 14px;
+}
+
+.profile-label {
+    color: #8fa9c1;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+.profile-value {
+    color: #e5effa;
+    font-size: 15px;
+    margin-bottom: 15px;
+}
+
+@media (max-width: 640px) {
+    div.st-key-profile_avatar img {
+        width: 112px !important;
+        height: 112px !important;
+    }
+
+    .profile-section {
+        padding: 16px;
+    }
+}

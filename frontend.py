@@ -12,6 +12,8 @@ import re
 from io import BytesIO
 from xml.sax.saxutils import escape
 
+from pathlib import Path
+
 import base64
 
 from reportlab.lib import colors
@@ -31,9 +33,38 @@ from reportlab.platypus import (
 
 st.set_page_config(
     page_title="CyberTalk",
-    page_icon="🛡️",
+    page_icon="""
+    <svg width="76" height="84" viewBox="0 0 100 110"
+        xmlns="http://www.w3.org/2000/svg">
+        <path d="M50 5 L91 22 L85 67 Q76 91 50 104
+                Q24 91 15 67 L9 22 Z"
+            fill="#102F4B"
+            stroke="#19C9F4"
+            stroke-width="4"/>
+        <path d="M50 16 L79 29 L74 65 Q67 83 50 94
+                Q33 83 26 65 L21 29 Z"
+            fill="#0878D1"
+            fill-opacity="0.35"/>
+        <path d="M32 42 H68 M32 68 H68"
+            stroke="#16D9F5" stroke-width="2"/>
+        <text x="50" y="62" fill="#FFFFFF"
+            font-size="25" font-weight="bold"
+            text-anchor="middle">CT</text>
+        </svg>
+    """.strip(),
     layout="wide",
 )
+# -----------------------------
+# Load CyberTalk global styles
+# -----------------------------
+
+CSS_FILE = Path(__file__).resolve().parent / "styles" / "cybertalk.css"
+
+if CSS_FILE.exists():
+    st.markdown(
+        f"<style>{CSS_FILE.read_text(encoding='utf-8')}</style>",
+        unsafe_allow_html=True,
+    )
 # -----------------------------
 # CyberTalk Custom UI Theme
 # -----------------------------
@@ -135,19 +166,32 @@ st.markdown(
         border-radius: 10px;
         border: 1px solid #294663;
     }
-    /* Minimal three-dot conversation menu button */
+    /* Compact three-dot conversation menu button */
     [class*="st-key-history_menu_icon_wrapper_"] .stButton > button {
         background: transparent !important;
         background-image: none !important;
         color: #d1deef !important;
+
         border: none !important;
         box-shadow: none !important;
-        border-radius: 8px !important;
-        min-height: 40px !important;
-        height: 40px !important;
+        border-radius: 6px !important;
+
+        width: 32px !important;
+        min-width: 32px !important;
+        max-width: 32px !important;
+
+        height: 32px !important;
+        min-height: 32px !important;
+
         padding: 0 !important;
-        font-size: 25px !important;
-        font-weight: 700 !important;
+
+        font-size: 16px !important;
+        font-weight: 500 !important;
+        line-height: 1 !important;
+    }
+
+    [class*="st-key-history_menu_icon_wrapper_"] .stButton > button * {
+        font-size: 16px !important;
         line-height: 1 !important;
     }
 
@@ -156,6 +200,36 @@ st.markdown(
         color: #19c9f4 !important;
         border: none !important;
         box-shadow: none !important;
+    }
+
+    /* ChatGPT-inspired conversation history rows */
+    [data-testid="stSidebar"] [class*="st-key-history_title_"] button {
+        background: transparent !important;
+        background-image: none !important;
+        color: #d1deef !important;
+        border: 1px solid transparent !important;
+        box-shadow: none !important;
+        border-radius: 8px !important;
+        min-height: 38px !important;
+        height: auto !important;
+        padding: 7px 10px !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+        font-size: 13px !important;
+        font-weight: 400 !important;
+        overflow: hidden !important;
+        white-space: nowrap !important;
+        text-overflow: ellipsis !important;
+    }
+
+    [data-testid="stSidebar"] [class*="st-key-history_title_"] button:hover {
+        background: #20334a !important;
+        color: #f4f7fb !important;
+        border-color: transparent !important;
+    }
+
+    [data-testid="stSidebar"] [class*="st-key-history_menu_icon_wrapper_"] {
+        margin-top: -1px;
     }
 
     /* Centered delete confirmation dialog */
@@ -565,7 +639,11 @@ def build_conversation_text(title, conversation_type, content):
                 "",
             ])
 
+
         agreement = content.get("agreement", {})
+
+        if not isinstance(agreement, dict):
+            agreement = {}
 
         status_labels = {
             "agreement_reached": "Agreement reached",
@@ -573,42 +651,84 @@ def build_conversation_text(title, conversation_type, content):
             "no_agreement": "No agreement",
         }
 
-        status = agreement.get("status", "unknown")
+        status = str(agreement.get("status") or "unknown")
+
+        explanation = agreement.get("explanation")
+
+        if not isinstance(explanation, str) or not explanation.strip():
+            explanation = "Not provided"
 
         lines.extend([
             "FINAL AGREEMENT EVALUATION",
             "-" * 55,
-            f"Status: {status_labels.get(status, status)}",
+            f"Status: {status_labels.get(status, status.replace('_', ' ').title())}",
             "",
             "Explanation:",
-            str(agreement.get("explanation", "Not provided")),
+            explanation,
             "",
             "Shared decision:",
-            str(agreement.get("shared_decision") or "No confirmed shared decision"),
+        ])
+
+        shared_decision = agreement.get("shared_decision")
+
+        if isinstance(shared_decision, str) and shared_decision.strip():
+            lines.append(shared_decision)
+        else:
+            lines.append("No confirmed shared decision.")
+
+        lines.extend([
             "",
             "Unresolved disagreements:",
         ])
 
         unresolved = agreement.get("unresolved_disagreements", [])
 
-        if unresolved:
-            lines.extend(f"- {item}" for item in unresolved)
+        if isinstance(unresolved, str):
+            unresolved_items = [unresolved] if unresolved.strip() else []
+
+        elif isinstance(unresolved, list):
+            unresolved_items = [
+                str(item).strip()
+                for item in unresolved
+                if item is not None and str(item).strip()
+            ]
+
+        else:
+            unresolved_items = []
+
+        if unresolved_items:
+            lines.extend(f"- {item}" for item in unresolved_items)
         else:
             lines.append("None reported.")
 
         lines.extend([
             "",
-            "Next actions:",
+            "Recommended next actions:",
         ])
 
         next_actions = agreement.get("next_actions", [])
 
-        if isinstance(next_actions, list) and next_actions:
-            lines.extend(f"- {item}" for item in next_actions)
-        elif isinstance(next_actions, str) and next_actions.strip():
-            lines.append(next_actions)
+        if isinstance(next_actions, str):
+            action_items = [next_actions] if next_actions.strip() else []
+
+        elif isinstance(next_actions, list):
+            action_items = [
+                str(item).strip()
+                for item in next_actions
+                if item is not None and str(item).strip()
+            ]
+
+        else:
+            action_items = []
+
+        if action_items:
+            lines.extend(
+                f"{index}. {action}"
+                for index, action in enumerate(action_items, start=1)
+            )
         else:
             lines.append("None specified.")
+
 
     else:
         lines.append("Conversation content is unavailable.")
@@ -777,7 +897,6 @@ def show_delete_all_confirmation():
                     for key in list(st.session_state.keys()):
                         if (
                             key.startswith("show_history_menu_")
-                            or key.startswith("show_history_details_")
                         ):
                             st.session_state.pop(key, None)
 
@@ -2070,19 +2189,252 @@ if not st.session_state["show_profile"]:
                 f"""
                 <style>
                 div.st-key-profile_menu_button button {{
-                    width: 48px !important;
-                    height: 48px !important;
-                    min-height: 48px !important;
+                    width: 36px !important;
+                    height: 36px !important;
+                    min-width: 36px !important;
+                    min-height: 36px !important;
+                    max-width: 36px !important;
+                    max-height: 36px !important;
                     padding: 0 !important;
                     border-radius: 50% !important;
+
                     background-image: url(
                         "data:{profile_picture_mime};base64,{encoded_picture}"
                     ) !important;
+
                     background-size: cover !important;
                     background-position: center !important;
                     background-repeat: no-repeat !important;
+
                     color: transparent !important;
+                    box-shadow: none !important;
                 }}
+
+                /* Keep the profile button contents small */
+                div.st-key-profile_menu_button button p {{
+                    display: none !important;
+                }}
+
+                /* Reduce the three-dot menu icon size */
+                div.st-key-profile_menu_button button svg {{
+                    width: 18px !important;
+                    height: 18px !important;
+                }}
+
+                /* Center the three-dot icon */
+                div.st-key-profile_menu_button button {{
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                }}
+
+                /* =================================
+                CONVERSATION THREE-DOT MENU
+                ================================= */
+
+                /* Compact three-dot trigger */
+                div[class*="st-key-history_menu_popover_"]
+                button[data-testid="stPopoverButton"] {{
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    width: 34px !important;
+                    min-width: 34px !important;
+                    max-width: 34px !important;
+                    height: 32px !important;
+                    min-height: 32px !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    border: none !important;
+                    border-radius: 6px !important;
+                    background: transparent !important;
+                    color: #ffffff !important;
+                    box-shadow: none !important;
+                    font-size: 23px !important;
+                    line-height: 1 !important;
+                    gap: 0 !important;
+                }}
+
+                /* Conversation three-dot menu trigger */
+                div[class*="st-key-history_menu_popover_"]
+                button[data-testid="stPopoverButton"] {{
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    width: 34px !important;
+                    min-width: 34px !important;
+                    height: 32px !important;
+                    min-height: 32px !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    border-radius: 6px !important;
+                    background: transparent !important;
+                    color: #ffffff !important;
+                    box-shadow: none !important;
+                    font-size: 0 !important;
+                }}
+
+                /* Hide all original button contents */
+                div[class*="st-key-history_menu_popover_"]
+                button[data-testid="stPopoverButton"] > * {{
+                    display: none !important;
+                }}
+
+                /* Remove any automatic arrow decorations */
+                div[class*="st-key-history_menu_popover_"]
+                button[data-testid="stPopoverButton"]::after {{
+                    display: none !important;
+                    content: none !important;
+                }}
+
+                /* Display exactly one custom three-dot icon */
+                div[class*="st-key-history_menu_popover_"]
+                button[data-testid="stPopoverButton"]::before {{
+                    content: "···" !important;
+                    display: block !important;
+                    visibility: visible !important;
+                    color: #ffffff !important;
+                    font-family: Arial, sans-serif !important;
+                    font-size: 24px !important;
+                    font-weight: 700 !important;
+                    line-height: 1 !important;
+                }}
+
+                /* Hover */
+                div[class*="st-key-history_menu_popover_"]
+                button[data-testid="stPopoverButton"]:hover {{
+                    background: rgba(255, 255, 255, 0.10) !important;
+                }}
+
+                /* Focus */
+                div[class*="st-key-history_menu_popover_"]
+                button[data-testid="stPopoverButton"]:focus {{
+                    outline: none !important;
+                    box-shadow: none !important;
+                }}
+
+                /* =================================
+                COMPACT DROPDOWN PANEL
+                ================================= */
+
+                div[data-testid="stPopoverBody"] {{
+                    width: 180px !important;
+                    min-width: 180px !important;
+                    max-width: 180px !important;
+                    padding: 6px !important;
+                    border-radius: 10px !important;
+                }}
+
+                /* Compact dropdown action buttons */
+                div[class*="st-key-menu_rename_"] button,
+                div[class*="st-key-menu_share_"] button,
+                div[class*="st-key-menu_download_"] button,
+                div[class*="st-key-menu_delete_"] button {{
+                    width: 100% !important;
+                    min-height: 34px !important;
+                    padding: 5px 9px !important;
+                    margin: 1px 0 !important;
+                    border-radius: 6px !important;
+                    font-size: 13px !important;
+                }}
+
+                div[class*="st-key-history_menu_popover_"]
+                [data-testid="stPopoverButton"] svg {{
+                    display: none !important;
+                }}
+                /* -----------------------------
+                ChatGPT-style conversation UI
+                ----------------------------- */
+
+                /* Stakeholder conversation messages */
+                [data-testid="stChatMessage"] {{
+                    background: rgba(18, 38, 60, 0.72);
+                    border: 1px solid #294663;
+                    border-radius: 14px;
+                    padding: 18px 20px;
+                    margin-bottom: 14px;
+                    transition: border-color 0.2s ease;
+                }}
+
+                [data-testid="stChatMessage"]:hover {{
+                    border-color: #168acb;
+                }}
+
+                /* Conversation message text */
+                [data-testid="stChatMessage"] p {{
+                    color: #e2ebf7;
+                    line-height: 1.75;
+                    font-size: 15px;
+                }}
+
+                /* Stakeholder names and turn labels */
+                [data-testid="stChatMessage"] strong {{
+                    color: #19c9f4;
+                    font-weight: 700;
+                }}
+
+                /* Input focus styling */
+                .stTextInput input:focus,
+                .stTextArea textarea:focus {{
+                    border-color: #19a9e5 !important;
+                    box-shadow: 0 0 0 1px #19a9e5 !important;
+                }}
+
+                /* Better text area readability */
+                .stTextArea textarea {{
+                    line-height: 1.6;
+                    padding: 12px;
+                }}
+
+                /* Responsive conversation spacing */
+                @media (max-width: 700px) {{
+                    [data-testid="stChatMessage"] {{
+                        padding: 13px;
+                        border-radius: 11px;
+                    }}
+                }}
+                /* Remove the outer box around the selected conversation action panel */
+                div[class*="st-key-history_action_panel_"] {{
+                    border: none !important;
+                    outline: none !important;
+                    box-shadow: none !important;
+                    background: transparent !important;
+                    padding: 0 !important;
+                }}
+
+                /* Remove borders from elements directly inside the action panel */
+                div[class*="st-key-history_action_panel_"] > div {{
+                    border: none !important;
+                    outline: none !important;
+                    box-shadow: none !important;
+                    background: transparent !important;
+                }}
+
+                /* Remove backgrounds from conversation action buttons */
+                div[class*="st-key-menu_rename_"] button,
+                div[class*="st-key-menu_share_"] button,
+                div[class*="st-key-menu_download_"] button,
+                div[class*="st-key-menu_delete_"] button {{
+                    background: transparent !important;
+                    background-color: transparent !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    color: #e2e8f0 !important;
+                    text-align: left !important;
+                    justify-content: flex-start !important;
+                    padding: 8px 12px !important;
+                }}
+
+                /* Subtle hover effect */
+                div[class*="st-key-menu_rename_"] button:hover,
+                div[class*="st-key-menu_share_"] button:hover,
+                div[class*="st-key-menu_download_"] button:hover,
+                div[class*="st-key-menu_delete_"] button:hover {{
+                    background: rgba(255, 255, 255, 0.08) !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                }}
+
                 </style>
                 """,
                 unsafe_allow_html=True,
@@ -2104,10 +2456,238 @@ if not st.session_state["show_profile"]:
             st.rerun()
 
 # -----------------------------
-# My Profile Page
+# Redesigned My Profile Page
 # -----------------------------
 
 if st.session_state["show_profile"]:
+
+    # -----------------------------
+    # Profile page styling
+    # -----------------------------
+
+    st.markdown(
+        """
+        <style>
+        .profile-page-header {
+            margin: 12px 0 24px 0;
+        }
+
+        .profile-page-header h1 {
+            color: #f0f6ff;
+            font-size: 32px;
+            margin-bottom: 5px;
+        }
+
+        .profile-page-header p {
+            color: #9fb2c9;
+            font-size: 14px;
+        }
+
+        .profile-avatar {
+            width: 152px;
+            height: 152px;
+            border-radius: 50%;
+            overflow: hidden;
+            margin: 8px auto 14px auto;
+            border: 3px solid #19c9f4;
+            box-shadow: 0 0 22px rgba(25, 201, 244, 0.18);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0878d1, #102f4b);
+            color: white;
+            font-size: 42px;
+            font-weight: 700;
+        }
+
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .profile-avatar-caption {
+            text-align: center;
+            color: #a9bad0;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+
+        .profile-section-heading {
+            color: #19c9f4;
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        /* Personal Information editor */
+
+        .profile-editor-title {
+            color: #f0f6ff;
+            font-size: 19px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .profile-editor-description {
+            color: #91a8c2;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+
+        div.st-key-open_edit_profile button {
+            background: linear-gradient(90deg, #087fa8, #19c9f4) !important;
+            color: #ffffff !important;
+            border: 1px solid #19c9f4 !important;
+            border-radius: 9px !important;
+            font-weight: 700 !important;
+            min-height: 44px !important;
+            transition: all 0.2s ease !important;
+        }
+
+        div.st-key-open_edit_profile button:hover {
+            border-color: #65ddff !important;
+            filter: brightness(1.12);
+        }
+
+        div.st-key-update_profile_form {
+            padding: 8px 2px 4px 2px;
+        }
+
+        div.st-key-update_profile_form input {
+            border-radius: 8px !important;
+        }
+
+        div.st-key-update_profile_form button {
+            background: #087fa8 !important;
+            color: #ffffff !important;
+            border: 1px solid #19c9f4 !important;
+            border-radius: 9px !important;
+            font-weight: 700 !important;
+            min-height: 42px !important;
+        }
+
+        div.st-key-update_profile_form button:hover {
+            background: #09678a !important;
+            border-color: #65ddff !important;
+        }
+
+        div.st-key-cancel_edit_profile button {
+            border-radius: 9px !important;
+            min-height: 42px !important;
+            font-weight: 600 !important;
+        }
+
+        .profile-detail-label {
+            color: #91a8c2;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            margin-bottom: 4px;
+        }
+
+        .profile-detail-value {
+            color: #f0f6ff;
+            font-size: 15px;
+            font-weight: 500;
+            overflow-wrap: anywhere;
+            margin-bottom: 18px;
+        }
+
+        /* Profile picture upload button */
+
+        div[data-testid="stFileUploader"] {
+            width: 100% !important;
+            max-width: 260px !important;
+            margin: 12px auto 20px auto !important;
+        }
+
+        div[data-testid="stFileUploader"] label {
+            display: none !important;
+        }
+
+        /* Profile navigation and action buttons */
+        div.st-key-open_edit_profile button,
+        div.st-key-open_change_password button {
+            border-radius: 9px !important;
+            min-height: 42px !important;
+        }
+
+        /* Profile form inputs */
+        div.st-key-update_profile_form input,
+        div.st-key-change_password_form input {
+            border-radius: 8px !important;
+        }
+
+        /* Responsive profile picture */
+        @media (max-width: 600px) {
+            .profile-avatar {
+                width: 125px;
+                height: 125px;
+                font-size: 34px;
+            }
+
+            .profile-page-header h1 {
+                font-size: 26px;
+            }
+        }
+        /* FINAL OVERRIDE: Profile picture uploader */
+
+        div[data-testid="stFileUploader"] {
+            width: 100% !important;
+            max-width: 260px !important;
+            margin: 12px auto 20px auto !important;
+        }
+
+        /* Remove the grey dropzone */
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            min-height: 0 !important;
+        }
+
+        /* Hide drag-and-drop instructions */
+        div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] {
+            display: none !important;
+        }
+
+        /* Style the actual native upload button */
+        div[data-testid="stFileUploader"] button,
+        div[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] {
+            width: 100% !important;
+            min-height: 46px !important;
+            background: linear-gradient(90deg, #0878d1, #13a5d9) !important;
+            background-color: #0878d1 !important;
+            color: #ffffff !important;
+            border: none !important;
+            border-radius: 9px !important;
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            box-shadow: none !important;
+            justify-content: center !important;
+        }
+
+        /* Hover effect */
+        div[data-testid="stFileUploader"] button:hover,
+        div[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"]:hover {
+            background: linear-gradient(90deg, #096bb8, #108fc4) !important;
+            background-color: #096bb8 !important;
+            box-shadow: 0 4px 14px rgba(25, 169, 229, 0.25) !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # -----------------------------
+    # Back navigation
+    # -----------------------------
+
     if st.button(
         "← Back to Chat",
         key="back_to_chat",
@@ -2117,21 +2697,45 @@ if st.session_state["show_profile"]:
         st.session_state["change_password_open"] = False
         st.rerun()
 
+    # -----------------------------
+    # Profile page heading
+    # -----------------------------
+
     st.title("My Profile")
 
-    st.write(
-        "View your CyberTalk account information."
+    st.caption(
+        "Manage your personal information and account settings."
     )
 
-    st.divider()
+    # Display messages after successful operations.
+    profile_notice = st.session_state.pop(
+        "profile_notice",
+        None,
+    )
+
+    if profile_notice:
+        notice_type, notice_message = profile_notice
+
+        if notice_type == "success":
+            st.success(notice_message)
+        elif notice_type == "info":
+            st.info(notice_message)
+        else:
+            st.warning(notice_message)
+
+    if st.session_state.pop(
+        "profile_picture_upload_success",
+        False,
+    ):
+        st.success("Profile picture uploaded successfully!")
 
     # -----------------------------
-    # Profile Picture
+    # Retrieve profile picture
     # -----------------------------
 
-    st.subheader("Profile Picture")
+    picture_bytes = None
+    picture_mime = "image/jpeg"
 
-    # Display the saved profile picture.
     try:
         picture_response = requests.get(
             f"{API_URL}/users/me/profile-picture",
@@ -2140,13 +2744,12 @@ if st.session_state["show_profile"]:
         )
 
         if picture_response.status_code == 200:
-            st.image(
-                picture_response.content,
-                width=160,
-            )
+            picture_bytes = picture_response.content
 
-        elif picture_response.status_code == 404:
-            st.info("You have not uploaded a profile picture yet.")
+            picture_mime = picture_response.headers.get(
+                "content-type",
+                "image/jpeg",
+            ).split(";")[0]
 
         elif picture_response.status_code == 401:
             clear_authentication()
@@ -2155,296 +2758,587 @@ if st.session_state["show_profile"]:
             )
             st.stop()
 
-        else:
-            st.error(
-                "Could not load your profile picture: "
-                f"{get_api_error(picture_response)}"
+        elif picture_response.status_code != 404:
+            st.warning(
+                "Could not load your profile picture."
             )
 
     except requests.exceptions.RequestException:
-        st.error(
-            "Could not connect to the API to load your profile picture."
+        st.warning(
+            "Could not connect to load your profile picture."
         )
 
-    # Display upload success after the automatic refresh.
-    if st.session_state.pop(
-        "profile_picture_upload_success",
-        False,
-    ):
-        st.success("Profile picture uploaded successfully!")
+    # -----------------------------
+    # Profile avatar and upload
+    # -----------------------------
 
-    # Image upload control.
-    uploaded_picture = st.file_uploader(
-        "Choose a profile picture",
-        type=["png", "jpg", "jpeg"],
-        key="profile_picture_uploader",
-        help="Upload a JPEG or PNG image. Maximum size: 5 MB.",
+    avatar_spacer_left, avatar_column, avatar_spacer_right = (
+        st.columns([1, 2, 1])
     )
 
-    if st.button(
-        "Upload Profile Picture",
-        key="upload_profile_picture",
-        disabled=uploaded_picture is None,
-        use_container_width=True,
-    ):
+    with avatar_column:
 
-        try:
-            with st.spinner("Uploading your profile picture..."):
+        if picture_bytes:
+            import base64
 
-                upload_response = requests.post(
-                    f"{API_URL}/users/me/profile-picture",
-                    headers=get_auth_headers(),
-                    files={
-                        "file": (
-                            uploaded_picture.name,
-                            uploaded_picture.getvalue(),
-                            uploaded_picture.type
-                            or "application/octet-stream",
-                        )
-                    },
-                    timeout=60,
-                )
+            encoded_picture = base64.b64encode(
+                picture_bytes
+            ).decode("utf-8")
 
-            if upload_response.status_code == 200:
+            st.markdown(
+                f"""
+                <div style="
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    margin: 15px 0 25px 0;
+                ">
+                    <img
+                        src="data:{picture_mime};base64,{encoded_picture}"
+                        style="
+                            width: 160px;
+                            height: 160px;
+                            border-radius: 50%;
+                            object-fit: cover;
+                            object-position: center;
+                            border: 3px solid #3B82F6;
+                        "
+                    />
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info(
+                "You have not uploaded a profile picture yet."
+            )
 
-                st.session_state[
-                    "profile_picture_upload_success"
-                ] = True
+        # Single-button profile picture upload
 
-                st.rerun()
+        uploader_version = st.session_state.get(
+            "profile_picture_uploader_version", 0
+        )
 
-            elif upload_response.status_code == 401:
+        uploaded_picture = st.file_uploader(
+            "Update Profile Picture",
+            type=["png", "jpg", "jpeg"],
+            key=f"profile_picture_uploader_{uploader_version}",
+            help="JPEG or PNG image. Maximum size: 5 MB.",
+            label_visibility="collapsed",
+        )
+        if uploaded_picture is not None:
 
-                clear_authentication()
+            picture_data = uploaded_picture.getvalue()
 
-                st.error(
-                    "Your session has expired. Please log in again."
-                )
+            st.markdown("**Preview your new profile picture**")
+            st.image(picture_data, width=160)
+
+            if len(picture_data) > 5 * 1024 * 1024:
+                st.error("The profile picture must not exceed 5 MB.")
 
             else:
-                st.error(
-                    "Profile picture upload failed: "
-                    f"{get_api_error(upload_response)}"
-                )
+                st.info("Confirm whether you want to save this picture.")
 
-        except requests.exceptions.RequestException:
-            st.error(
-                "Could not upload your profile picture. "
-                "Please check your connection and try again."
-            )
+                confirm_col, cancel_col = st.columns(2)
+
+                with confirm_col:
+                    confirm_upload = st.button(
+                        "Save Profile Picture",
+                        key="confirm_profile_picture_upload",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                with cancel_col:
+                    cancel_upload = st.button(
+                        "Cancel",
+                        key="cancel_profile_picture_upload",
+                        use_container_width=True,
+                    )
+
+                if cancel_upload:
+                    st.session_state["profile_picture_uploader_version"] = (
+                        st.session_state.get(
+                            "profile_picture_uploader_version", 0
+                        ) + 1
+                    )
+                    st.rerun()
+
+                if confirm_upload:
+                    try:
+                        with st.spinner("Updating profile picture..."):
+                            upload_response = requests.post(
+                                f"{API_URL}/users/me/profile-picture",
+                                headers=get_auth_headers(),
+                                files={
+                                    "file": (
+                                        uploaded_picture.name,
+                                        picture_data,
+                                        uploaded_picture.type,
+                                    )
+                                },
+                                timeout=30,
+                            )
+
+                        if upload_response.status_code in (200, 201):
+
+                            st.session_state["profile_picture_uploader_version"] = (
+                                st.session_state.get(
+                                    "profile_picture_uploader_version", 0
+                                ) + 1
+                            )
+
+                            st.session_state["profile_picture_upload_success"] = True
+
+                            st.rerun()
+
+                        elif upload_response.status_code == 401:
+                            clear_authentication()
+                            st.error("Your session has expired.")
+                            st.stop()
+
+                        else:
+                            st.error(get_api_error(upload_response))
+
+                    except requests.exceptions.RequestException:
+                        st.error("Unable to upload your profile picture.")
+
+
 
     st.divider()
 
+
+    # -----------------------------
+    # Account overview
+    # -----------------------------
+
+    st.markdown(
+        '<div class="profile-section-heading">'
+        'Account Overview'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    account_role = str(
+        current_user.get("role", "user")
+    ).title()
+
+    account_active = current_user.get("is_active", True)
+
+    account_status = (
+        "Active" if account_active else "Inactive"
+    )
+
+    with st.container(border=True):
+
+        detail_col1, detail_col2 = st.columns(2)
+
+        with detail_col1:
+
+            st.markdown(
+                '<div class="profile-detail-label">Username</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                f'<div class="profile-detail-value">'
+                f'{escape(str(current_user.get("username", "N/A")))}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                '<div class="profile-detail-label">Account Role</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                f'<div class="profile-detail-value">'
+                f'{escape(account_role)}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        with detail_col2:
+
+            st.markdown(
+                '<div class="profile-detail-label">Email Address</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                f'<div class="profile-detail-value">'
+                f'{escape(str(current_user.get("email", "N/A")))}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                '<div class="profile-detail-label">Account Status</div>',
+                unsafe_allow_html=True,
+            )
+
+            status_color = (
+                "#32d49a" if account_active else "#ff8585"
+            )
+
+            st.markdown(
+                f'<div class="profile-detail-value" '
+                f'style="color:{status_color};">'
+                f'{escape(account_status)}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown(
+            '<div class="profile-detail-label">User ID</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f'<div class="profile-detail-value">'
+            f'{escape(str(current_user.get("id", "N/A")))}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        created_at = current_user.get(
+            "created_at",
+            "Not available",
+        )
+
+        st.markdown(
+            '<div class="profile-detail-label">Registration Date</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f'<div class="profile-detail-value">'
+            f'{escape(str(created_at))}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.divider()
+
+    # -----------------------------
+    # Edit Profile
+    # -----------------------------
+
+    st.markdown(
+        '<div class="profile-section-heading">'
+        'Personal Information'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
     if st.button(
-        "Edit Profile",
+        (
+            "Close Profile Editor"
+            if st.session_state["edit_profile_open"]
+            else "Update Profile"
+        ),
         key="open_edit_profile",
         use_container_width=True,
     ):
+
         st.session_state["edit_profile_open"] = (
             not st.session_state["edit_profile_open"]
         )
+
         st.session_state["change_password_open"] = False
         st.rerun()
 
     if st.session_state["edit_profile_open"]:
-        st.subheader("Edit Profile")
 
-        with st.form("update_profile_form"):
-            updated_username = st.text_input(
-                "Username",
-                value=current_user.get("username", ""),
-                max_chars=50,
+        with st.container(border=True):
+
+            st.subheader("Edit Profile")
+
+            st.caption(
+                "Manage your username and email address."
             )
 
-            updated_email = st.text_input(
-                "Email Address",
-                value=current_user.get("email", ""),
-                max_chars=255,
-            )
+            with st.form("update_profile_form"):
 
-            save_profile = st.form_submit_button(
-                "Save Changes",
-                use_container_width=True,
-            )
+                updated_username = st.text_input(
+                    "Username",
+                    value=current_user.get("username", ""),
+                    max_chars=50,
+                )
 
-        if save_profile:
-            username = updated_username.strip()
-            email = updated_email.strip().lower()
+                updated_email = st.text_input(
+                    "Email Address",
+                    value=current_user.get("email", ""),
+                    max_chars=255,
+                )
 
-            if len(username) < 3:
-                st.error("Username must contain at least 3 characters.")
+                save_profile = st.form_submit_button(
+                    "Save Changes",
+                    use_container_width=True,
+                )
 
-            elif (
-                "@" not in email
-                or "." not in email.split("@")[-1]
-            ):
-                st.error("Please provide a valid email address.")
+            cancel_col, empty_col = st.columns([1, 2], gap="medium")
 
-            elif (
-                username == current_user.get("username")
-                and email == current_user.get("email", "").lower()
-            ):
-                st.info("No profile changes were made.")
+            with cancel_col:
+                cancel_profile_edit = st.button(
+                    "Cancel",
+                    key="cancel_edit_profile",
+                    use_container_width=True,
+                )
 
-            else:
-                try:
-                    update_response = requests.put(
-                        f"{API_URL}/users/me",
-                        headers=get_auth_headers(),
-                        json={
-                            "username": username,
-                            "email": email,
-                        },
-                        timeout=15,
-                    )
+            if cancel_profile_edit:
+                st.session_state["edit_profile_open"] = False
+                st.rerun()
 
-                    if update_response.status_code == 200:
-                        st.success(
-                            "Your profile was updated successfully."
-                        )
-                        st.rerun()
+            if save_profile:
 
-                    elif update_response.status_code == 401:
-                        st.error(
-                            "Your session has expired. Please log in again."
-                        )
-                        clear_authentication()
-                        st.rerun()
+                username = updated_username.strip()
+                email = updated_email.strip().lower()
 
-                    else:
-                        st.error(get_api_error(update_response))
+                if len(username) < 3:
 
-                except requests.RequestException:
                     st.error(
-                        "Unable to update your profile. "
-                        "Please check your connection and try again."
+                        "Username must contain at least 3 characters."
                     )
 
-        st.divider()
+                elif (
+                    "@" not in email
+                    or "." not in email.split("@")[-1]
+                ):
+
+                    st.error(
+                        "Please provide a valid email address."
+                    )
+
+                elif (
+                    username == current_user.get("username")
+                    and email == current_user.get(
+                        "email", ""
+                    ).lower()
+                ):
+
+                    st.session_state["edit_profile_open"] = False
+
+                    st.session_state["profile_notice"] = (
+                        "info",
+                        "No profile changes were made.",
+                    )
+
+                    st.rerun()
+
+                else:
+
+                    try:
+                        with st.spinner(
+                            "Updating your profile..."
+                        ):
+
+                            update_response = requests.put(
+                                f"{API_URL}/users/me",
+                                headers=get_auth_headers(),
+                                json={
+                                    "username": username,
+                                    "email": email,
+                                },
+                                timeout=15,
+                            )
+
+                        if update_response.status_code == 200:
+
+                            # Close the editor immediately after success.
+                            st.session_state["edit_profile_open"] = False
+
+                            st.session_state["profile_notice"] = (
+                                "success",
+                                "Your profile was updated successfully.",
+                            )
+
+                            st.rerun()
+
+                        elif update_response.status_code == 401:
+
+                            clear_authentication()
+
+                            st.error(
+                                "Your session has expired. Please log in again."
+                            )
+
+                            st.stop()
+
+                        else:
+
+                            # Keep the editor open so the user can correct errors.
+                            st.error(
+                                get_api_error(update_response)
+                            )
+
+                    except requests.exceptions.RequestException:
+
+                        st.error(
+                            "Unable to update your profile. "
+                            "Please check your connection and try again."
+                        )
 
     st.divider()
-    st.subheader("Account Information")
 
-    st.write("**User ID**")
-    st.write(current_user.get("id", "N/A"))
-    st.divider()
+    # -----------------------------
+    # Change Password
+    # -----------------------------
 
-    st.write("**Account Role**")
-    st.write(current_user.get("role", "user").title())
-    st.divider()
-
-    st.write("**Username**")
-    st.write(current_user.get("username", "N/A"))
-    st.divider()
-
-    st.write("**Email Address**")
-    st.write(current_user.get("email", "N/A"))
-    st.divider()
-
-    st.subheader("Account Details")
-
-    created_at = current_user.get(
-        "created_at",
-        "Not available",
-    )
-
-    st.write("**Registration Date**")
-    st.write(created_at)
-
-    st.caption(
-        "Your profile information is retrieved securely "
-        "from your authenticated CyberTalk account."
+    st.markdown(
+        '<div class="profile-section-heading">'
+        'Security Settings'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     if st.button(
-        "Change Password",
+        (
+            "Close Password Settings"
+            if st.session_state["change_password_open"]
+            else "Change Password"
+        ),
         key="open_change_password",
         use_container_width=True,
     ):
+
         st.session_state["change_password_open"] = (
             not st.session_state["change_password_open"]
         )
+
         st.session_state["edit_profile_open"] = False
         st.rerun()
 
     if st.session_state["change_password_open"]:
-        st.subheader("Change Password")
-        st.caption("Update your account password securely.")
 
-        with st.form("change_password_form"):
-            current_password = st.text_input(
-                "Current Password",
-                type="password",
+        with st.container(border=True):
+
+            st.subheader("Update Your Password")
+
+            st.caption(
+                "Choose a strong password to protect your account."
             )
 
-            new_password = st.text_input(
-                "New Password",
-                type="password",
-                help="Must contain at least 8 characters.",
-            )
+            with st.form("change_password_form"):
 
-            confirm_new_password = st.text_input(
-                "Confirm New Password",
-                type="password",
-            )
+                current_password = st.text_input(
+                    "Current Password",
+                    type="password",
+                )
 
-            change_password_submitted = st.form_submit_button(
-                "Change Password",
-                use_container_width=True,
-            )
+                new_password = st.text_input(
+                    "New Password",
+                    type="password",
+                    help="Must contain at least 8 characters.",
+                )
 
-        if change_password_submitted:
-            if not current_password or not new_password or not confirm_new_password:
-                st.error("Please fill in all password fields.")
+                confirm_new_password = st.text_input(
+                    "Confirm New Password",
+                    type="password",
+                )
 
-            elif len(new_password) < 8:
-                st.error("New password must contain at least 8 characters.")
+                change_password_submitted = st.form_submit_button(
+                    "Save New Password",
+                    use_container_width=True,
+                )
 
-            elif new_password != confirm_new_password:
-                st.error("New passwords do not match.")
+            if change_password_submitted:
 
-            elif new_password == current_password:
-                st.error("New password must be different from the current password.")
+                if (
+                    not current_password
+                    or not new_password
+                    or not confirm_new_password
+                ):
 
-            else:
-                try:
-                    response = requests.post(
-                        f"{API_URL}/change-password",
-                        headers=get_auth_headers(),
-                        json={
-                            "current_password": current_password,
-                            "new_password": new_password,
-                            "confirm_new_password": confirm_new_password,
-                        },
-                        timeout=15,
-                    )
-
-                    if response.status_code == 200:
-                        st.success("Password changed successfully!")
-
-                    elif response.status_code == 401:
-                        clear_authentication()
-                        st.error(
-                            "Your session has expired. Please log in again."
-                        )
-                        st.rerun()
-
-                    else:
-                        st.error(get_api_error(response))
-
-                except requests.RequestException:
                     st.error(
-                        "Unable to connect to the CyberTalk server. "
-                        "Please try again."
+                        "Please fill in all password fields."
                     )
+
+                elif len(new_password) < 8:
+
+                    st.error(
+                        "New password must contain at least 8 characters."
+                    )
+
+                elif new_password != confirm_new_password:
+
+                    st.error(
+                        "New passwords do not match."
+                    )
+
+                elif new_password == current_password:
+
+                    st.error(
+                        "New password must be different from the current password."
+                    )
+
+                else:
+
+                    try:
+                        with st.spinner(
+                            "Updating your password..."
+                        ):
+
+                            password_response = requests.post(
+                                f"{API_URL}/change-password",
+                                headers=get_auth_headers(),
+                                json={
+                                    "current_password": current_password,
+                                    "new_password": new_password,
+                                    "confirm_new_password": confirm_new_password,
+                                },
+                                timeout=15,
+                            )
+
+                        if password_response.status_code == 200:
+
+                            st.session_state[
+                                "change_password_open"
+                            ] = False
+
+                            st.session_state["profile_notice"] = (
+                                "success",
+                                "Your password was changed successfully.",
+                            )
+
+                            st.rerun()
+
+                        elif password_response.status_code == 401:
+
+                            clear_authentication()
+
+                            st.error(
+                                "Your session has expired. Please log in again."
+                            )
+
+                            st.stop()
+
+                        else:
+
+                            st.error(
+                                get_api_error(password_response)
+                            )
+
+                    except requests.exceptions.RequestException:
+
+                        st.error(
+                            "Unable to connect to the CyberTalk server. "
+                            "Please try again."
+                        )
 
     st.divider()
+
+    # -----------------------------
+    # Logout
+    # -----------------------------
 
     if st.button(
         "Log Out",
         use_container_width=True,
         key="profile_logout",
     ):
+
         clear_authentication()
 
         st.session_state["show_profile"] = False
@@ -2580,138 +3474,164 @@ try:
                     if st.button(
                         title,
                         key=f"history_title_{history_id}",
-                        use_container_width=True,
+                        help="Open conversation",
+                        use_container_width=False,
                     ):
-                        st.session_state[details_key] = not (
-                            st.session_state.get(details_key, False)
-                        )
-                        st.rerun()
+                        # Open the saved conversation directly from its title.
+                        try:
+                            detail_response = fetch_single_chat_history(history_id)
 
-                with menu_col:
-                    with st.container(
-                        key=f"history_menu_icon_wrapper_{history_id}"
-                    ):
-                        if st.button(
-                            "⋮",
-                            key=f"history_menu_button_{history_id}",
-                            help="Conversation actions",
-                            use_container_width=True,
-                        ):
-                            st.session_state[menu_key] = not (
-                                st.session_state.get(menu_key, False)
-                            )
-                            st.rerun()
-                # Expanded conversation details.
-                if st.session_state.get(details_key, False):
-                    with st.sidebar.container():
-                        st.caption(
-                            f"Type: {conversation_type.upper()}"
-                        )
-                        st.caption(
-                            f"Saved: {record['created_at']}"
-                        )
-
-                        if st.button(
-                            "Open Conversation",
-                            key=f"open_history_{history_id}",
-                            use_container_width=True,
-                        ):
-                            try:
-                                detail_response = (
-                                    fetch_single_chat_history(history_id)
+                            if detail_response.ok:
+                                saved_record = detail_response.json()
+                                raw_content = saved_record.get("content", "{}")
+                                saved_content = (
+                                    json.loads(raw_content)
+                                    if isinstance(raw_content, str)
+                                    else raw_content
+                                )
+                                saved_type = saved_record.get(
+                                    "conversation_type",
+                                    conversation_type,
                                 )
 
-                                if detail_response.ok:
-                                    saved_record = detail_response.json()
-                                    saved_content = json.loads(
-                                        saved_record["content"]
-                                    )
+                                if saved_type == "qa":
+                                    if not isinstance(saved_content, dict):
+                                        raise ValueError("Invalid saved Q&A data.")
+                                    st.session_state["qa_result"] = saved_content
+                                    st.session_state["active_workspace"] = "qa"
+                                    st.session_state.pop("cybertalk_result", None)
 
-                                    if (
-                                        saved_record["conversation_type"]
-                                        == "qa"
-                                    ):
-                                        if not isinstance(
-                                            saved_content, dict
-                                        ):
-                                            raise ValueError(
-                                                "Invalid saved Q&A data."
-                                            )
-
-                                        st.session_state["qa_result"] = (
-                                            saved_content
-                                        )
-                                        st.session_state["active_workspace"] = "qa"
-                                        st.session_state.pop(
-                                            "cybertalk_result",
-                                            None,
-                                        )
-
-                                    elif (
-                                        saved_record["conversation_type"]
-                                        == "dialogue"
-                                    ):
-                                        if not isinstance(
-                                            saved_content, dict
-                                        ):
-                                            raise ValueError(
-                                                "Invalid saved dialogue data."
-                                            )
-
-                                        st.session_state[
-                                            "cybertalk_result"
-                                        ] = saved_content
-                                        st.session_state["active_workspace"] = "discussion"
-                                        st.session_state.pop(
-                                            "qa_result",
-                                            None,
-                                        )
-
-                                    st.rerun()
+                                elif saved_type == "dialogue":
+                                    if not isinstance(saved_content, dict):
+                                        raise ValueError("Invalid saved dialogue data.")
+                                    st.session_state["cybertalk_result"] = saved_content
+                                    st.session_state["active_workspace"] = "discussion"
+                                    st.session_state.pop("qa_result", None)
 
                                 else:
-                                    st.sidebar.error(
-                                        "Could not open this conversation: "
-                                        f"{get_api_error(detail_response)}"
-                                    )
+                                    raise ValueError("Unsupported conversation type.")
 
-                            except (
-                                requests.exceptions.RequestException,
-                                ValueError,
-                                KeyError,
-                            ):
+                                for state_key in list(st.session_state.keys()):
+                                    if state_key.startswith("show_history_menu_"):
+                                        st.session_state[state_key] = False
+
+                                st.rerun()
+                            else:
                                 st.sidebar.error(
-                                    "Could not load the saved conversation."
+                                    "Could not open this conversation: "
+                                    f"{get_api_error(detail_response)}"
                                 )
 
-                # Three-dot menu actions.
-                if st.session_state.get(menu_key, False):
-                    with st.sidebar.container(border=True):
-                        st.caption("Conversation actions")
-
-                        with st.form(
-                            key=f"rename_history_form_{history_id}"
+                        except (
+                            requests.exceptions.RequestException,
+                            ValueError,
+                            KeyError,
+                            TypeError,
                         ):
-                            new_title = st.text_input(
-                                "Conversation title",
-                                value=title,
-                                max_chars=500,
-                                key=f"rename_title_{history_id}",
+                            st.sidebar.error(
+                                "Could not load the saved conversation."
                             )
 
-                            rename_submitted = st.form_submit_button(
-                                "Rename",
-                                use_container_width=True,
-                            )
+                with menu_col:
+                    history_menu_popover = st.popover(
+                        "···",
+                        key=f"history_menu_popover_{history_id}",
+                        help="Conversation actions",
+                        type="tertiary",
+                        use_container_width=False,
+                        width=190,
+                    )
+
+                    # Show only four actions in the initial floating menu.
+                    with history_menu_popover:
+                        if st.button(
+                            "Rename",
+                            icon=":material/edit:",
+                            key=f"menu_rename_{history_id}",
+                            use_container_width=True,
+                        ):
+                            st.session_state[f"history_action_{history_id}"] = "rename"
+                            st.rerun()
+
+                        if st.button(
+                            "Share",
+                            icon=":material/share:",
+                            key=f"menu_share_{history_id}",
+                            use_container_width=True,
+                        ):
+                            st.session_state[f"history_action_{history_id}"] = "share"
+                            st.rerun()
+
+                        if st.button(
+                            "Download",
+                            icon=":material/download:",
+                            key=f"menu_download_{history_id}",
+                            use_container_width=True,
+                        ):
+                            st.session_state[f"history_action_{history_id}"] = "download"
+                            st.rerun()
+
+                        if st.button(
+                            "Delete",
+                            icon=":material/delete:",
+                            key=f"menu_delete_{history_id}",
+                            use_container_width=True,
+                            type="secondary",
+                        ):
+                            st.session_state[f"history_action_{history_id}"] = "delete"
+                            st.rerun()
+                # --------------------------------------------------
+                # Render the selected conversation action separately
+                # --------------------------------------------------
+
+                action_key = f"history_action_{history_id}"
+                selected_action = st.session_state.get(action_key)
+
+                if selected_action:
+
+                    with st.container(key=f"history_action_panel_{history_id}"):
+
+                        # Close the selected action panel.
+                        if st.button(
+                            "Close",
+                            key=f"close_history_action_{history_id}",
+                            type="tertiary",
+                        ):
+                            st.session_state.pop(action_key, None)
+                            st.rerun()
+
+                        # -------------------------
+                        # RENAME
+                        # -------------------------
+                        if selected_action == "rename":
+
+                            st.markdown("**Rename conversation**")
+
+                            with st.form(
+                                key=f"rename_history_form_{history_id}",
+                                border=False,
+                            ):
+                                new_title = st.text_input(
+                                    "Conversation title",
+                                    value=title,
+                                    max_chars=500,
+                                    key=f"rename_title_{history_id}",
+                                )
+
+                                rename_submitted = st.form_submit_button(
+                                    "Save changes",
+                                    use_container_width=True,
+                                )
 
                             if rename_submitted:
+
                                 if not new_title.strip():
-                                    st.sidebar.warning(
+                                    st.warning(
                                         "Conversation title cannot be empty."
                                     )
 
                                 elif new_title.strip() == title:
-                                    st.sidebar.info(
+                                    st.info(
                                         "The conversation title has not changed."
                                     )
 
@@ -2723,211 +3643,248 @@ try:
                                         )
 
                                         if rename_response.ok:
-                                            st.session_state[menu_key] = False
+                                            st.session_state.pop(action_key, None)
                                             st.rerun()
 
                                         else:
-                                            st.sidebar.error(
+                                            st.error(
                                                 "Could not rename conversation: "
                                                 f"{get_api_error(rename_response)}"
                                             )
 
                                     except requests.exceptions.RequestException:
-                                        st.sidebar.error(
+                                        st.error(
                                             "Could not connect to the API."
                                         )
 
-                        st.divider()
+                        # -------------------------
+                        # SHARE
+                        # -------------------------
+                        elif selected_action == "share":
 
-                        st.caption("Share or export conversation")
+                            st.markdown("**Share conversation**")
 
-                        share_state_key = f"share_link_data_{history_id}"
-                        revoked_state_key = f"share_revoked_{history_id}"
+                            share_state_key = f"share_link_data_{history_id}"
+                            revoked_state_key = f"share_revoked_{history_id}"
 
-                        if st.session_state.pop(revoked_state_key, False):
-                            st.sidebar.success("Share link revoked successfully.")
+                            if st.session_state.pop(revoked_state_key, False):
+                                st.success("Share link revoked successfully.")
 
-                        with st.form(key=f"share_form_{history_id}"):
-                            expiry_label = st.selectbox(
-                                "Link expiration",
-                                options=[
-                                    "Never",
-                                    "1 day",
-                                    "7 days",
-                                    "30 days",
-                                    "90 days",
-                                    "365 days",
-                                ],
-                                key=f"share_expiry_{history_id}",
-                            )
-
-                            generate_share = st.form_submit_button(
-                                "Generate Shareable Link",
-                                use_container_width=True,
-                                disabled=bool(st.session_state.get(share_state_key)),
-                            )
-
-                        if generate_share:
-                            expiry_days = {
-                                "Never": None,
-                                "1 day": 1,
-                                "7 days": 7,
-                                "30 days": 30,
-                                "90 days": 90,
-                                "365 days": 365,
-                            }
-
-                            try:
-                                share_response = create_share_link(
-                                    history_id,
-                                    expiry_days[expiry_label],
-                                )
-
-                                if share_response.ok:
-                                    st.session_state[share_state_key] = (
-                                        share_response.json()
-                                    )
-                                    st.rerun()
-
-                                else:
-                                    st.sidebar.error(
-                                        "Could not create share link: "
-                                        f"{get_api_error(share_response)}"
-                                    )
-
-                            except requests.exceptions.RequestException:
-                                st.sidebar.error(
-                                    "Could not connect to the API."
-                                )
-
-                        share_data = st.session_state.get(share_state_key)
-
-                        if share_data:
-                            st.caption("Your read-only sharing link")
-
-                            # Streamlit code blocks provide a copy-to-clipboard control.
-                            st.code(share_data["share_url"])
-
-                            if share_data.get("expires_at"):
-                                st.caption(
-                                    f"Expires: {share_data['expires_at']}"
-                                )
-                            else:
-                                st.caption("This link does not expire.")
-
-                            if st.button(
-                                "Revoke Share Link",
-                                key=f"revoke_share_{history_id}",
-                                use_container_width=True,
-                                type="secondary",
+                            with st.form(
+                                key=f"share_form_{history_id}",
+                                border=False,
                             ):
+
+                                expiry_label = st.selectbox(
+                                    "Link expiration",
+                                    options=[
+                                        "Never",
+                                        "1 day",
+                                        "7 days",
+                                        "30 days",
+                                        "90 days",
+                                        "365 days",
+                                    ],
+                                    key=f"share_expiry_{history_id}",
+                                )
+
+                                generate_share = st.form_submit_button(
+                                    "Generate Shareable Link",
+                                    use_container_width=True,
+                                    disabled=bool(
+                                        st.session_state.get(share_state_key)
+                                    ),
+                                )
+
+                            if generate_share:
+
+                                expiry_days = {
+                                    "Never": None,
+                                    "1 day": 1,
+                                    "7 days": 7,
+                                    "30 days": 30,
+                                    "90 days": 90,
+                                    "365 days": 365,
+                                }
+
                                 try:
-                                    revoke_response = revoke_share_link(
+                                    share_response = create_share_link(
                                         history_id,
-                                        share_data["share_id"],
+                                        expiry_days[expiry_label],
                                     )
 
-                                    if revoke_response.ok:
-                                        st.session_state.pop(share_state_key, None)
-                                        st.session_state[revoked_state_key] = True
+                                    if share_response.ok:
+                                        st.session_state[share_state_key] = (
+                                            share_response.json()
+                                        )
                                         st.rerun()
 
                                     else:
-                                        st.sidebar.error(
-                                            "Could not revoke share link: "
-                                            f"{get_api_error(revoke_response)}"
+                                        st.error(
+                                            "Could not create share link: "
+                                            f"{get_api_error(share_response)}"
                                         )
 
                                 except requests.exceptions.RequestException:
-                                    st.sidebar.error(
+                                    st.error(
                                         "Could not connect to the API."
                                     )
 
-                        try:
-                            download_response = fetch_single_chat_history(
-                                history_id
-                            )
+                            share_data = st.session_state.get(share_state_key)
 
-                            if download_response.ok:
-                                download_record = download_response.json()
+                            if share_data:
 
-                                raw_content = download_record.get(
-                                    "content",
-                                    "{}",
+                                st.caption("Your read-only sharing link")
+
+                                st.code(share_data["share_url"])
+
+                                if share_data.get("expires_at"):
+                                    st.caption(
+                                        f"Expires: {share_data['expires_at']}"
+                                    )
+                                else:
+                                    st.caption("This link does not expire.")
+
+                                if st.button(
+                                    "Revoke Share Link",
+                                    key=f"revoke_share_{history_id}",
+                                    use_container_width=True,
+                                    type="secondary",
+                                ):
+                                    try:
+                                        revoke_response = revoke_share_link(
+                                            history_id,
+                                            share_data["share_id"],
+                                        )
+
+                                        if revoke_response.ok:
+                                            st.session_state.pop(
+                                                share_state_key,
+                                                None,
+                                            )
+                                            st.session_state[revoked_state_key] = True
+                                            st.rerun()
+
+                                        else:
+                                            st.error(
+                                                "Could not revoke share link: "
+                                                f"{get_api_error(revoke_response)}"
+                                            )
+
+                                    except requests.exceptions.RequestException:
+                                        st.error(
+                                            "Could not connect to the API."
+                                        )
+
+                        # -------------------------
+                        # DOWNLOAD
+                        # -------------------------
+                        elif selected_action == "download":
+
+                            st.markdown("**Download conversation**")
+
+                            try:
+                                download_response = fetch_single_chat_history(
+                                    history_id
                                 )
 
-                                if isinstance(raw_content, str):
-                                    download_content = json.loads(raw_content)
-                                else:
-                                    download_content = raw_content
+                                if download_response.ok:
 
-                                download_title = download_record.get(
-                                    "title",
+                                    download_record = download_response.json()
+
+                                    raw_content = download_record.get(
+                                        "content",
+                                        "{}",
+                                    )
+
+                                    if isinstance(raw_content, str):
+                                        download_content = json.loads(raw_content)
+                                    else:
+                                        download_content = raw_content
+
+                                    download_title = download_record.get(
+                                        "title",
+                                        title,
+                                    )
+
+                                    download_type = download_record.get(
+                                        "conversation_type",
+                                        conversation_type,
+                                    )
+
+                                    txt_data = build_conversation_text(
+                                        download_title,
+                                        download_type,
+                                        download_content,
+                                    )
+
+                                    pdf_data = build_conversation_pdf(
+                                        download_title,
+                                        download_type,
+                                        download_content,
+                                    )
+
+                                    st.download_button(
+                                        "Download as PDF",
+                                        data=pdf_data,
+                                        file_name=build_conversation_filename(
+                                            download_title,
+                                            "pdf",
+                                        ),
+                                        mime="application/pdf",
+                                        key=f"download_pdf_{history_id}",
+                                        use_container_width=True,
+                                    )
+
+                                    st.download_button(
+                                        "Download as TXT",
+                                        data=txt_data,
+                                        file_name=build_conversation_filename(
+                                            download_title,
+                                            "txt",
+                                        ),
+                                        mime="text/plain",
+                                        key=f"download_txt_{history_id}",
+                                        use_container_width=True,
+                                    )
+
+                                else:
+                                    st.warning(
+                                        "Could not load this conversation "
+                                        "for download."
+                                    )
+
+                            except (
+                                requests.exceptions.RequestException,
+                                ValueError,
+                            ):
+                                st.warning(
+                                    "Could not prepare the conversation download."
+                                )
+
+                        # -------------------------
+                        # DELETE
+                        # -------------------------
+                        elif selected_action == "delete":
+
+                            st.markdown("**Delete conversation**")
+
+                            st.warning(
+                                "This action will permanently delete this conversation."
+                            )
+
+                            if st.button(
+                                "Continue to delete",
+                                key=f"confirm_delete_action_{history_id}",
+                                use_container_width=True,
+                                type="secondary",
+                            ):
+                                st.session_state.pop(action_key, None)
+
+                                show_delete_confirmation(
+                                    history_id,
                                     title,
                                 )
-
-                                download_type = download_record.get(
-                                    "conversation_type",
-                                    conversation_type,
-                                )
-
-                                txt_data = build_conversation_text(
-                                    download_title,
-                                    download_type,
-                                    download_content,
-                                )
-
-                                pdf_data = build_conversation_pdf(
-                                    download_title,
-                                    download_type,
-                                    download_content,
-                                )
-
-                                st.download_button(
-                                    "Download as PDF",
-                                    data=pdf_data,
-                                    file_name=build_conversation_filename(
-                                        download_title,
-                                        "pdf",
-                                    ),
-                                    mime="application/pdf",
-                                    key=f"download_pdf_{history_id}",
-                                    use_container_width=True,
-                                )
-
-                                st.download_button(
-                                    "Download as TXT",
-                                    data=txt_data,
-                                    file_name=build_conversation_filename(
-                                        download_title,
-                                        "txt",
-                                    ),
-                                    mime="text/plain",
-                                    key=f"download_txt_{history_id}",
-                                    use_container_width=True,
-                                )
-
-                            else:
-                                st.warning(
-                                    "Could not load this conversation "
-                                    "for download."
-                                )
-
-                        except (requests.exceptions.RequestException, ValueError):
-                            st.warning(
-                                "Could not prepare the conversation download."
-                            )
-
-                        if st.button(
-                            "Delete",
-                            key=f"delete_history_{history_id}",
-                            use_container_width=True,
-                            type="secondary",
-                        ):
-                            show_delete_confirmation(
-                                history_id,
-                                title,
-                            )
 
     else:
         st.sidebar.warning(
@@ -3010,10 +3967,9 @@ if st.session_state["active_workspace"] == "home":
 # Workspace navigation
 # -----------------------------
 
-nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 3])
+nav_col1, nav_col2, nav_col3 = st.columns([1, 1, 1])
 
 with nav_col1:
-
     if st.button(
         "New Discussion",
         use_container_width=True,
@@ -3023,12 +3979,10 @@ with nav_col1:
             else "secondary"
         ),
     ):
-
         st.session_state["active_workspace"] = "discussion"
         st.rerun()
 
 with nav_col2:
-
     if st.button(
         "Ask CyberTalk",
         use_container_width=True,
@@ -3038,19 +3992,22 @@ with nav_col2:
             else "secondary"
         ),
     ):
-
         st.session_state["active_workspace"] = "qa"
         st.rerun()
 
 with nav_col3:
-
     if st.button(
         "Home",
-        use_container_width=False,
+        use_container_width=True,
+        type=(
+            "primary"
+            if st.session_state["active_workspace"] == "home"
+            else "secondary"
+        ),
     ):
-
         st.session_state["active_workspace"] = "home"
         st.rerun()
+
 
 
 # -----------------------------
@@ -3139,6 +4096,7 @@ if st.session_state["active_workspace"] == "qa":
                     qa_result = qa_response.json()
 
                     st.session_state["qa_result"] = qa_result
+                    st.session_state["qa_question"] = question.strip()
 
                     # Automatically save Q&A history.
                     try:
@@ -3154,9 +4112,9 @@ if st.session_state["active_workspace"] == "qa":
 
                         if history_response.status_code == 201:
 
-                            st.success(
-                                "Your conversation was saved to chat history."
-                            )
+                            st.session_state["qa_history_saved_success"] = True
+
+                            st.rerun()
 
                         else:
 
@@ -3197,21 +4155,41 @@ if st.session_state["active_workspace"] == "qa":
 
 
     # -----------------------------
-    # Display Q&A result
+    # Display Q&A conversation
     # -----------------------------
+    if st.session_state.pop(
+        "qa_history_saved_success",
+        False,
+    ):
+        st.success(
+            "Your conversation was saved to chat history."
+        )
 
     qa_result = st.session_state.get("qa_result")
 
     if qa_result:
 
-        st.subheader("Answer")
-
-        st.write(
-            qa_result.get(
-                "answer",
-                "Noanswer was returned.",
-            )
+        displayed_question = qa_result.get(
+            "question",
+            st.session_state.get("qa_question", ""),
         )
+
+        if displayed_question:
+
+            with st.chat_message("user"):
+
+                st.markdown(displayed_question)
+
+        with st.chat_message("assistant"):
+
+            st.markdown("**CyberTalk**")
+
+            st.markdown(
+                qa_result.get(
+                    "answer",
+                    "No answer was returned.",
+                )
+            )
 
 # -----------------------------
 # Stakeholder dialogue workspace
@@ -3221,53 +4199,68 @@ if st.session_state["active_workspace"] == "discussion":
     # Stakeholder dialogue input
     # -----------------------------
 
-    with st.form("dialogue_form"):
+    with st.container(border=True):
 
-        topic = st.text_area(
-            "Cybersecurity topic",
-            placeholder=(
-                "Example: Should our organization require "
-                "multi-factor authentication for all employees?"
-            ),
-            max_chars=500,
-            help="Enter a topic containing at least 3 characters.",
+        st.markdown("### Define the discussion")
+
+        st.caption(
+            "Choose a cybersecurity topic, identify two stakeholders, "
+            "and set how many rounds they should discuss."
         )
 
-        col1, col2 = st.columns(2)
+        with st.form("dialogue_form"):
 
-        with col1:
-
-            stakeholder_1 = st.text_input(
-                "Stakeholder 1",
-                placeholder="Example: Chief Information Security Officer",
-                max_chars=100,
+            topic = st.text_area(
+                "Cybersecurity topic",
+                placeholder=(
+                    "Example: Should our organization require "
+                    "multi-factor authentication for all employees?"
+                ),
+                max_chars=500,
+                height=120,
+                help="Enter a topic containing at least 3 characters.",
             )
 
-        with col2:
+            st.markdown("**Discussion participants**")
 
-            stakeholder_2 = st.text_input(
-                "Stakeholder 2",
-                placeholder="Example: IT Operations Manager",
-                max_chars=100,
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                stakeholder_1 = st.text_input(
+                    "Stakeholder 1",
+                    placeholder="Example: Chief Information Security Officer",
+                    max_chars=100,
+                )
+
+            with col2:
+
+                stakeholder_2 = st.text_input(
+                    "Stakeholder 2",
+                    placeholder="Example: IT Operations Manager",
+                    max_chars=100,
+                )
+
+            st.markdown("**Discussion settings**")
+
+            rounds = st.number_input(
+                "Number of discussion rounds",
+                min_value=1,
+                max_value=5,
+                value=2,
+                step=1,
+                help=(
+                    "Each round includes one response from each stakeholder. "
+                    "Two additional closing statements are generated afterward."
+                ),
             )
 
-        rounds = st.number_input(
-            "Number of discussion rounds",
-            min_value=1,
-            max_value=5,
-            value=2,
-            step=1,
-            help=(
-                "Each round includes one response from each stakeholder. "
-                "Two additional closing statements are generated afterward."
-            ),
-        )
+            submitted = st.form_submit_button(
+                "Generate CyberTalk Dialogue",
+                type="primary",
+                use_container_width=True,
+            )
 
-        submitted = st.form_submit_button(
-            "Generate CyberTalk Dialogue",
-            type="primary",
-            use_container_width=True,
-        )
 
 
     # -----------------------------
@@ -3365,6 +4358,8 @@ if st.session_state["active_workspace"] == "discussion":
                             st.success(
                                 "Your dialogue was saved to chat history."
                             )
+
+                            st.rerun()
 
                         else:
 
@@ -3532,6 +4527,7 @@ if st.session_state["active_workspace"] == "discussion":
 
                 st.write(message)
 
+
         # -----------------------------
         # Final agreement evaluation
         # -----------------------------
@@ -3544,12 +4540,15 @@ if st.session_state["active_workspace"] == "discussion":
         if not isinstance(agreement, dict):
             agreement = {}
 
-        status = agreement.get("status", "unknown")
+        status = str(agreement.get("status") or "unknown")
 
         explanation = agreement.get(
             "explanation",
             "No explanation was provided.",
         )
+
+        if not isinstance(explanation, str) or not explanation.strip():
+            explanation = "No explanation was provided."
 
         status_labels = {
             "agreement_reached": "Agreement reached",
@@ -3562,23 +4561,19 @@ if st.session_state["active_workspace"] == "discussion":
             status.replace("_", " ").title(),
         )
 
-        st.markdown(f"**Status:** {status_label}")
+        st.markdown(f"**Agreement status: {status_label}**")
 
-        # Give each agreement outcome a distinct visual treatment.
+        # Present the overall outcome.
         if status == "agreement_reached":
-
             st.success(explanation)
 
         elif status == "partial_agreement":
-
             st.warning(explanation)
 
         elif status == "no_agreement":
-
             st.error(explanation)
 
         else:
-
             st.info(explanation)
 
         # -----------------------------
@@ -3589,14 +4584,24 @@ if st.session_state["active_workspace"] == "discussion":
 
         shared_decision = agreement.get("shared_decision")
 
-        if shared_decision:
+        if isinstance(shared_decision, str) and shared_decision.strip():
 
-            st.success(shared_decision)
+            if status == "agreement_reached":
+                st.success(shared_decision)
+
+            elif status == "no_agreement":
+                st.warning(
+                    "A proposed decision was provided, "
+                    "but no agreement was reached."
+                )
+                st.write(shared_decision)
+
+            else:
+                st.info(shared_decision)
 
         else:
-
-            st.warning(
-                "The evaluator did not identify a confirmed shared decision."
+            st.info(
+                "No confirmed shared decision was identified."
             )
 
         # -----------------------------
@@ -3610,14 +4615,25 @@ if st.session_state["active_workspace"] == "discussion":
             [],
         )
 
-        if unresolved:
+        if isinstance(unresolved, str):
+            unresolved_items = [unresolved] if unresolved.strip() else []
 
-            for disagreement in unresolved:
+        elif isinstance(unresolved, list):
+            unresolved_items = [
+                str(item).strip()
+                for item in unresolved
+                if item is not None and str(item).strip()
+            ]
 
+        else:
+            unresolved_items = []
+
+        if unresolved_items:
+
+            for disagreement in unresolved_items:
                 st.warning(disagreement)
 
         else:
-
             st.write(
                 "No unresolved disagreements were reported."
             )
@@ -3626,18 +4642,29 @@ if st.session_state["active_workspace"] == "discussion":
         # Recommended next actions
         # -----------------------------
 
-        st.markdown("**Next actions**")
+        st.markdown("**Recommended next actions**")
 
         next_actions = agreement.get("next_actions", [])
 
-        if next_actions:
+        if isinstance(next_actions, str):
+            action_items = [next_actions] if next_actions.strip() else []
 
-            for index, action in enumerate(next_actions, start=1):
-
-                st.write(f"{index}. {action}")
+        elif isinstance(next_actions, list):
+            action_items = [
+                str(action).strip()
+                for action in next_actions
+                if action is not None and str(action).strip()
+            ]
 
         else:
+            action_items = []
 
+        if action_items:
+
+            for index, action in enumerate(action_items, start=1):
+                st.markdown(f"{index}. {action}")
+
+        else:
             st.write(
                 "No next actions were reported."
             )

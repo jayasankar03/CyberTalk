@@ -97,7 +97,7 @@ Return only valid JSON with exactly these fields:
         "stream": False,
         "keep_alive": "10m",
         "options": {
-            "num_predict": 180,
+            "num_predict": 250,
         },
     }
 

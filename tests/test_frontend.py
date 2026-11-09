@@ -4,6 +4,7 @@ import json
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+from contextlib import nullcontext
 
 from streamlit.testing.v1 import AppTest
 import requests
@@ -713,20 +714,13 @@ class FrontendTests(unittest.TestCase):
             history_records=history_records,
             history_detail=history_detail,
         )
-        # Expand the conversation details.
+        # Clicking the history title opens the saved conversation directly.
         title_button = next(
             button
             for button in app.button
             if button.label == "How does MFA work?"
         )
         title_button.click().run(timeout=10)
-        open_button = next(
-            button
-            for button in app.button
-            if button.label == "Open Conversation"
-        )
-
-        open_button.click().run(timeout=10)
 
         self.assertTrue(
             any(
@@ -734,6 +728,9 @@ class FrontendTests(unittest.TestCase):
                 in element.value
                 for element in app.markdown
             )
+        )
+        self.assertFalse(
+            any(button.label == "Open Conversation" for button in app.button)
         )
 
     @patch("requests.delete")
@@ -752,17 +749,13 @@ class FrontendTests(unittest.TestCase):
         delete_response.status_code = 204
         mock_delete.return_value = delete_response
 
-        app = self.run_authenticated_app(
-            history_records=history_records
-        )
-
-        # Open the three-dot menu.
-        menu_button = next(
-            button
-            for button in app.button
-            if button.label == "⋮"
-        )
-        menu_button.click().run(timeout=10)
+        with patch(
+            "streamlit.popover",
+            return_value=nullcontext(),
+        ):
+            app = self.run_authenticated_app(
+                history_records=history_records
+            )
 
         # Select Delete from the opened menu.
         delete_button = next(
@@ -778,10 +771,18 @@ class FrontendTests(unittest.TestCase):
         self.assertTrue(
             any(
                 "permanently delete" in element.value.lower()
-                for element in app.markdown
+                for element in app.warning
             ),
-            "Delete confirmation dialog should display its warning message.",
+            "Delete confirmation should display its warning message.",
         )
+        # Continue to the explicit delete confirmation dialog.
+        continue_button = next(
+                button
+                for button in app.button
+                if button.label == "Continue to delete"
+        )
+
+        continue_button.click().run(timeout=10)
 
         # Confirm deletion using the dialog's specific button.
         confirm_button = next(
@@ -815,7 +816,7 @@ class FrontendTests(unittest.TestCase):
 
         edit_button = next(
             button for button in app.button
-            if button.label == "Edit Profile"
+            if button.label == "Update Profile"
         )
         edit_button.click().run(timeout=10)
 
@@ -849,7 +850,7 @@ class FrontendTests(unittest.TestCase):
 
         edit_button = next(
             button for button in app.button
-            if button.label == "Edit Profile"
+            if button.label == "Update Profile"
         )
         edit_button.click().run(timeout=10)
 
@@ -995,22 +996,30 @@ class FrontendTests(unittest.TestCase):
             "created_at": "2026-11-02T10:00:00",
         }
 
-        app = self.run_authenticated_app(
-            history_records=history_records,
-            history_detail=history_detail,
+        with patch(
+            "streamlit.popover",
+            return_value=nullcontext(),
+        ):
+            app = self.run_authenticated_app(
+                history_records=history_records,
+                history_detail=history_detail,
+            )
+
+        # Open the conversation's Download action.
+        download_menu_button = next(
+            button
+            for button in app.button
+            if button.label == "Download"
         )
 
-        menu_button = next(
-            button for button in app.button
-            if button.label == "⋮"
-        )
-        menu_button.click().run(timeout=10)
+        download_menu_button.click().run(timeout=10)
 
+        # Verify both download options are displayed.
         download_buttons = app.get("download_button")
+
         download_labels = [
             button.label for button in download_buttons
         ]
-
         self.assertIn("Download as PDF", download_labels)
         self.assertIn("Download as TXT", download_labels)
 
@@ -1058,18 +1067,27 @@ class FrontendTests(unittest.TestCase):
             "created_at": "2026-11-02T10:00:00",
         }
 
-        app = self.run_authenticated_app(
-            history_records=history_records,
-            history_detail=history_detail,
+        with patch(
+            "streamlit.popover",
+            return_value=nullcontext(),
+        ):
+            app = self.run_authenticated_app(
+                history_records=history_records,
+                history_detail=history_detail,
+            )
+
+        # Open the conversation's Download action.
+        download_menu_button = next(
+            button
+            for button in app.button
+            if button.label == "Download"
         )
 
-        menu_button = next(
-            button for button in app.button
-            if button.label == "⋮"
-        )
-        menu_button.click().run(timeout=10)
+        download_menu_button.click().run(timeout=10)
 
+        # Verify both download options are displayed.
         download_buttons = app.get("download_button")
+
         download_labels = [
             button.label for button in download_buttons
         ]
@@ -1091,6 +1109,7 @@ class FrontendTests(unittest.TestCase):
         profile_button.click().run(timeout=10)
 
         return app
+
 
     def test_existing_profile_picture_displays_correctly(self):
         app = self.open_profile_picture_page()
@@ -1115,18 +1134,22 @@ class FrontendTests(unittest.TestCase):
 
             return original_get(url, *args, **kwargs)
 
-        with (
-            patch(
-                "requests.get",
-                side_effect=mock_profile_picture_get,
-            ),
-            patch("streamlit.image") as mock_image,
+        with patch(
+            "requests.get",
+            side_effect=mock_profile_picture_get,
         ):
             app.run(timeout=10)
 
-        mock_image.assert_called_once_with(
-            picture_bytes,
-            width=160,
+        # Verify that the profile picture is displayed
+        # using the custom circular HTML avatar.
+        self.assertTrue(
+            any(
+                "<img" in element.value
+                and "data:image/png;base64," in element.value
+                for element in app.markdown
+            ),
+            "The existing profile picture should be displayed "
+            "as a circular HTML avatar.",
         )
 
     def test_no_profile_picture_displays_correctly(self):
@@ -1146,7 +1169,15 @@ class FrontendTests(unittest.TestCase):
         uploaded_picture = Mock()
         uploaded_picture.name = "avatar.png"
         uploaded_picture.type = "image/png"
-        uploaded_picture.getvalue.return_value = b"test-image-data"
+
+        image_buffer = BytesIO()
+        Image.new(
+            "RGB",
+            (1, 1),
+            color=(255, 255, 255),
+        ).save(image_buffer, format="PNG")
+
+        uploaded_picture.getvalue.return_value = image_buffer.getvalue()
 
         upload_response = Mock()
         upload_response.status_code = 200
@@ -1175,12 +1206,12 @@ class FrontendTests(unittest.TestCase):
         ):
             app.run(timeout=10)
 
-            upload_button = next(
+            save_button = next(
                 button for button in app.button
-                if button.label == "Upload Profile Picture"
+                if button.label == "Save Profile Picture"
             )
 
-            upload_button.click().run(timeout=10)
+            save_button.click().run(timeout=10)
 
         mock_post.assert_called_once()
 
@@ -1188,9 +1219,9 @@ class FrontendTests(unittest.TestCase):
             mock_post.call_args.kwargs["files"]["file"],
             (
                 "avatar.png",
-                b"test-image-data",
+                image_buffer.getvalue(),
                 "image/png",
-            ),
+            )
         )
 
         self.assertGreaterEqual(
@@ -1213,7 +1244,16 @@ class FrontendTests(unittest.TestCase):
         uploaded_picture = Mock()
         uploaded_picture.name = "avatar.png"
         uploaded_picture.type = "image/png"
-        uploaded_picture.getvalue.return_value = b"test-image-data"
+
+        image_buffer = BytesIO()
+
+        Image.new(
+            "RGB",
+            (1, 1),
+            color=(255, 255, 255),
+        ).save(image_buffer, format="PNG")
+
+        uploaded_picture.getvalue.return_value = image_buffer.getvalue()
 
         upload_response = Mock()
         upload_response.status_code = 400
@@ -1233,12 +1273,12 @@ class FrontendTests(unittest.TestCase):
         ):
             app.run(timeout=10)
 
-            upload_button = next(
+            save_button = next(
                 button for button in app.button
-                if button.label == "Upload Profile Picture"
+                if button.label == "Save Profile Picture"
             )
 
-            upload_button.click().run(timeout=10)
+            save_button.click().run(timeout=10)
 
         self.assertTrue(
             any(
