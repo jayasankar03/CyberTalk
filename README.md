@@ -1,55 +1,150 @@
-# CyberTalk: Two Chatbots, One Agreement
+# CyberTalk — Two Chatbots, One Agreement
 
-## 1. Project Overview
+CyberTalk is a local AI-powered cybersecurity collaboration platform. It brings two user-defined cybersecurity stakeholders together for a structured discussion, evaluates whether they reach a meaningful agreement, and identifies unresolved issues and practical next steps.
 
-CyberTalk is a Generative AI application that simulates a cybersecurity discussion between two stakeholder personas using a locally running Large Language Model (LLM).
+The application also includes a cybersecurity question-and-answer assistant, user authentication, conversation management, secure sharing, and administrator account management.
 
-Users can enter a cybersecurity topic, define any two distinct stakeholder personas, and specify the number of discussion rounds. The application generates alternating dialogue, adds closing statements from both stakeholders, and evaluates whether they reach an agreement.
+## 1. Key Features
 
-CyberTalk also provides a cybersecurity question-and-answer feature and a Streamlit user interface.
+### AI-powered cybersecurity discussion
+- Define any two distinct stakeholder roles; stakeholders are not restricted to predefined personas.
+- Enter a cybersecurity topic and select between 1 and 5 discussion rounds.
+- Generate alternating responses from both stakeholders.
+- Generate closing statements from each stakeholder.
+- Evaluate the discussion and return a structured agreement result.
 
-## 2. Key Features
+### Agreement evaluation
+The evaluator identifies:
+- Agreement status: `agreement_reached`, `partial_agreement`, or `no_agreement`.
+- Explanation of the evaluation.
+- Shared decision supported by both stakeholders.
+- Unresolved disagreements.
+- Recommended next actions.
 
-- **User-defined stakeholders:** Enter any two distinct professional roles.
-- **Custom cybersecurity topics:** Discuss cybersecurity risks, policies, and decisions.
-- **Configurable dialogue rounds:** Select between 1 and 5 regular rounds.
-- **AI-generated dialogue:** Use the locally hosted Ollama model.
-- **Closing statements:** Generate a final statement from each stakeholder.
-- **Agreement evaluation:** Return the status, explanation, shared decision, unresolved disagreements, and next actions.
-- **Cybersecurity Q&A:** Submit cybersecurity questions and receive relevant answers.
-- **Streamlit frontend:** Use a graphical interface for the application's features.
-- **Input validation:** Reject invalid requests and duplicate stakeholder names.
-- **Automated tests:** Test API endpoints, dialogue orchestration, agreement evaluation, and frontend behavior.
-- **Error handling:** Handle relevant Ollama and agreement-evaluation failures.
+The evaluation applies conservative agreement rules. A proposal is not automatically treated as approval, outstanding third-party approval is treated as a dependency, and unresolved material disagreements prevent an unsupported full-agreement result.
 
-## 3. Technology Stack
+### Cybersecurity Q&A
+- Ask individual cybersecurity-related questions.
+- Check whether a question is relevant to cybersecurity before generating an answer.
+- Return concise, practical answers from the local AI model.
+- Reject questions that are clearly outside the cybersecurity scope.
 
-- Python
-- FastAPI
-- Streamlit
-- Pydantic
-- Uvicorn
-- Ollama
-- Llama 3.2 (3B parameter model)
-- HTTPX
-- pytest and Python unittest
+### User accounts and authentication
+- User registration and login.
+- Username or email-based login.
+- Secure password hashing using Argon2.
+- JWT-based authentication.
+- Authenticated password changes.
+- Password recovery through email.
+- Single-use, expiring password-reset tokens stored as hashes.
+- Account activation and deactivation checks.
+
+### Profile management
+- View and update username and email.
+- Upload and replace a profile picture.
+- JPEG and PNG image validation.
+- Profile picture upload limit of 5 MB.
+
+### Conversation management
+- Automatically save dialogue and Q&A conversations to account history.
+- View previous conversations.
+- Rename conversations.
+- Delete individual conversations or all saved conversations.
+- Export conversations as PDF or TXT.
+- Create read-only sharing links with optional expiration.
+- Revoke existing sharing links.
+
+### Administrator dashboard
+- Search registered users.
+- View account details.
+- Update user roles.
+- Deactivate and reactivate accounts.
+- View administrator audit history.
+- Protect the primary administrator account and prevent unsafe administrator-role changes.
+
+## 2. Technology Stack
+
+| Component | Technology |
+|---|---|
+| Backend API | FastAPI |
+| Frontend | Streamlit |
+| Programming language | Python |
+| AI runtime | Ollama |
+| Default AI model | Llama 3.2 3B (`llama3.2:3b`) |
+| Database | SQLite |
+| ORM | SQLAlchemy |
+| Data validation | Pydantic |
+| Authentication | JWT |
+| Password hashing | Argon2 |
+| HTTP client | HTTPX and Requests |
+| Email delivery | SMTP |
+| PDF generation | ReportLab |
+| Image validation | Pillow |
+| Testing | pytest and unittest |
+
+## 3. Application Architecture
+
+CyberTalk uses a separate FastAPI backend and Streamlit frontend.
+
+```text
+                  User
+                   |
+                   v
+            Streamlit Frontend
+                   |
+                   | HTTP requests
+                   v
+              FastAPI API
+              /         \
+             /           \
+            v             v
+      SQLite Database   Ollama API
+            |             |
+            |             v
+            |        Llama 3.2 3B
+            |
+            v
+     Users, conversations,
+     reset tokens, sharing
+     links and audit logs
+```
+
+The backend manages authentication, account permissions, conversation storage, agreement evaluation, and communication with Ollama. The frontend provides the user interface and communicates with the backend through HTTP requests.
 
 ## 4. Prerequisites
 
-Before running CyberTalk, prepare:
+Install the following before starting:
 
-1. Python and pip.
+1. Python 3.10 or later.
 2. Git.
 3. Ollama.
-4. The `llama3.2:3b` model downloaded through Ollama.
+4. The `llama3.2:3b` model.
+5. An SMTP account if email-based password recovery is required.
 
-Verify that Ollama is running and the model is available before testing AI-powered features.
+Download the model:
+
+```bash
+ollama pull llama3.2:3b
+```
+
+Start Ollama if it is not already running:
+
+```bash
+ollama serve
+```
+
+The default Ollama endpoint is:
+
+```text
+http://127.0.0.1:11434/api/chat
+```
 
 ## 5. Installation and Setup
 
-### Step 1: Open the project directory
+### Step 1: Clone the repository
 
 ```bash
+git clone https://github.com/jayasankar03/CyberTalk.git
 cd CyberTalk
 ```
 
@@ -61,13 +156,13 @@ python -m venv .venv
 
 ### Step 3: Activate the virtual environment
 
-For Windows Command Prompt:
+Windows Command Prompt:
 
 ```bat
 .venv\Scripts\activate.bat
 ```
 
-For Windows PowerShell:
+Windows PowerShell:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -79,97 +174,167 @@ For Windows PowerShell:
 python -m pip install -r requirements.txt
 ```
 
-### Step 5: Download the Ollama model
+### Step 5: Configure environment variables
+
+Create a `.env` file in the project root using `.env.example` as the template.
+
+Configure the application secret, environment, Ollama settings, and email settings as appropriate.
+
+Generate a secure application secret with:
 
 ```bash
-ollama pull llama3.2:3b
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Ensure Ollama is running locally and the model is available.
+Example development configuration:
 
-The application uses the Ollama chat endpoint:
+```env
+CYBERTALK_SECRET_KEY=your-generated-secret
+CYBERTALK_ENV=development
 
-```text
-http://127.0.0.1:11434/api/chat
+OLLAMA_URL=http://127.0.0.1:11434/api/chat
+MODEL_NAME=llama3.2:3b
+
+CYBERTALK_PASSWORD_RESET_URL=http://localhost:8501/
+
+CYBERTALK_SMTP_HOST=smtp.gmail.com
+CYBERTALK_SMTP_PORT=587
+CYBERTALK_SMTP_USERNAME=your-email@gmail.com
+CYBERTALK_SMTP_PASSWORD=your-app-password
+CYBERTALK_SMTP_FROM_EMAIL=your-email@gmail.com
 ```
+
+For Gmail, use an app password where applicable rather than your normal account password.
+
+For production, configure:
+
+```env
+CYBERTALK_ENV=production
+CYBERTALK_PASSWORD_RESET_URL=https://your-approved-domain/
+CYBERTALK_PASSWORD_RESET_ALLOWED_HOSTS=your-approved-domain
+```
+
+Production password-reset URLs must use HTTPS and a hostname explicitly included in `CYBERTALK_PASSWORD_RESET_ALLOWED_HOSTS`. Use a strong secret of at least 32 characters. Do not commit `.env` or real credentials to source control.
 
 ### Step 6: Start the FastAPI backend
 
-In the first terminal, with the virtual environment activated, run:
+Open the first terminal, activate the virtual environment, and run:
 
 ```bash
 python -m uvicorn main:app --reload
 ```
 
-### Step 7: Open the API documentation
+The backend will be available at:
 
-Visit:
+```text
+http://127.0.0.1:8000
+```
 
+API documentation:
+
+```text
 http://127.0.0.1:8000/docs
+```
 
-The Swagger interface lets you inspect API endpoints and submit requests.
+The application validates its environment, security secret, Ollama configuration, and database initialization during startup.
 
-### Step 8: Start the Streamlit frontend
+### Step 7: Start the Streamlit frontend
 
-Keep the FastAPI server running. Open a **second terminal** in the project directory, activate the same virtual environment, and run:
+Open a second terminal in the project directory, activate the same virtual environment, and run:
 
 ```bash
 streamlit run frontend.py
 ```
 
-Streamlit will display the local URL for the user interface, typically:
+The frontend is normally available at:
 
+```text
 http://localhost:8501
-
-Use the URL printed in your terminal if a different port is assigned.
-
-## 6. API Endpoints
-
-### `GET /`
-
-Returns a basic welcome message.
-
-### `GET /health`
-
-Returns the backend health status.
-
-Example response:
-
-```json
-{
-  "status": "healthy"
-}
 ```
 
-### `POST /chat`
+If the backend runs at a different address, configure `CYBERTALK_API_URL` in the environment.
 
-Generates a response from the configured Ollama model.
+Keep both the backend and frontend running while using CyberTalk.
 
-Example request:
+## 6. Initial Administrator Setup
 
-```json
-{
-  "message": "What are the benefits of multi-factor authentication?"
-}
+Newly registered accounts receive the standard `user` role.
+
+The project includes `provision_initial_admin.py` to designate an existing account as the primary administrator.
+
+Before running the script, make sure the intended account has been registered and that `TARGET_USERNAME` in the script matches that account's username.
+
+Then run:
+
+```bash
+python provision_initial_admin.py
 ```
 
-### `POST /ask`
+The script checks that the account exists and is active and that another primary administrator has not already been designated.
 
-Answers a cybersecurity question using the Q&A service.
+Keep access to the primary administrator account secure.
 
-Example request:
+## 7. API Endpoints
 
-```json
-{
-  "question": "How can an organization improve phishing protection?"
-}
-```
+All protected endpoints require a valid JWT bearer access token.
 
-The service validates the question and handles relevant invalid or malformed AI responses.
+### Authentication and account management
 
-### `POST /dialogue`
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/register` | Register a user |
+| POST | `/login` | Authenticate a user |
+| POST | `/password-reset/request` | Request password recovery |
+| POST | `/password-reset/confirm` | Confirm a password reset |
+| POST | `/change-password` | Change the authenticated user's password |
+| GET | `/users/me` | Retrieve the current profile |
+| PUT | `/users/me` | Update profile information |
+| POST | `/users/me/profile-picture` | Upload or replace a profile picture |
+| GET | `/users/me/profile-picture` | Retrieve the profile picture |
 
-Generates a multi-round discussion between two user-defined stakeholders and evaluates the completed dialogue.
+### AI features
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/chat` | Generate an AI response |
+| POST | `/ask` | Answer a cybersecurity question |
+| POST | `/dialogue` | Generate a stakeholder discussion and evaluate agreement |
+
+### Conversation history and sharing
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/history` | Save a conversation |
+| GET | `/history` | Retrieve the user's conversations |
+| GET | `/history/{history_id}` | Retrieve one conversation |
+| PUT | `/history/{history_id}` | Rename a conversation |
+| DELETE | `/history/{history_id}` | Delete one conversation |
+| DELETE | `/history` | Delete all conversations |
+| POST | `/history/{history_id}/share` | Create a sharing link |
+| GET | `/shared/{token}` | View a shared conversation |
+| DELETE | `/history/{history_id}/share/{share_id}` | Revoke a sharing link |
+
+### Administrator operations
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/admin/users` | Search and list users |
+| GET | `/admin/users/{user_id}` | Retrieve account details |
+| PATCH | `/admin/users/{user_id}/role` | Update a user's role |
+| PATCH | `/admin/users/{user_id}/deactivate` | Deactivate an account |
+| PATCH | `/admin/users/{user_id}/reactivate` | Reactivate an account |
+| GET | `/admin/audit-logs` | Retrieve administrator audit history |
+
+### General endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/` | Backend welcome response |
+| GET | `/health` | Backend health status |
+
+For request and response schemas, use the interactive Swagger documentation at `/docs`.
+
+## 8. Stakeholder Dialogue Example
 
 Example request:
 
@@ -182,112 +347,185 @@ Example request:
 }
 ```
 
-Stakeholder names must be distinct. The number of regular rounds must be between 1 and 5.
+Both stakeholder roles are user-defined. The same role cannot be used for both stakeholders.
 
-For `rounds = 2`, the API generates four regular contributions followed by two closing statements, for six dialogue messages in total.
+For two regular rounds, the application generates:
 
-The response includes the topic, stakeholder names, dialogue, configured model, and agreement evaluation.
+- Two alternating contributions per round.
+- One closing statement from each stakeholder.
+- Six dialogue messages in total.
 
-## 7. Agreement Evaluation
+The completed dialogue is passed to the agreement evaluator.
 
-The dialogue response includes an `agreement` object with:
+The response includes the discussion, stakeholder information, model information, agreement result, and AI performance metrics.
 
-- `status`: The evaluated agreement status.
-- `explanation`: Why that status was assigned.
-- `shared_decision`: The common decision, when supported by the discussion.
-- `unresolved_disagreements`: Issues that remain unresolved.
-- `next_actions`: Suggested follow-up actions.
+## 9. Agreement Evaluation
 
-Supported statuses:
+The agreement evaluator uses the complete discussion, including both closing statements.
 
-- `agreement_reached`
-- `partial_agreement`
-- `no_agreement`
+It distinguishes between:
 
-Closing statements encourage both stakeholders to identify a shared decision or next step. However, they do not guarantee genuine agreement. The evaluator must report unresolved disagreements honestly rather than inventing consensus.
+- `agreement_reached`: Both stakeholders explicitly accept a clear shared decision, with no material unresolved issues.
+- `partial_agreement`: Some decisions are shared, but a material issue, disagreement, or condition remains.
+- `no_agreement`: No meaningful common decision has been accepted.
 
-## 8. Running the Tests
+The evaluator also checks for inconsistent results. For example, a result claiming full agreement without a shared decision is downgraded rather than accepted as full agreement.
 
-Activate the virtual environment and run the complete test suite:
+A proposal is not treated as approval, and outstanding third-party approval remains a dependency.
+
+## 10. Security and Data Management
+
+CyberTalk includes several security controls:
+
+- Argon2 password hashing.
+- Signed JWT authentication with a 30-minute default access-token lifetime.
+- Database-backed user and role verification.
+- Account activation checks.
+- Authentication-version checks for invalidating older sessions after relevant account changes.
+- SHA-256 hashing of password-reset and sharing tokens before storage.
+- Expiring, single-use password-reset tokens.
+- Generic password-reset request responses to reduce account enumeration.
+- Role-based administrator authorization.
+- Protection against self-demotion and removal of the last administrator.
+- Administrator audit records for account-management actions.
+- Validation of uploaded profile-picture content, format, size, and dimensions.
+- Read-only public conversation sharing with expiration and revocation support.
+
+The SQLite database is created in the project directory as:
+
+```text
+cybertalk.db
+```
+
+Profile pictures are stored separately in:
+
+```text
+profile_pictures/
+```
+
+Conversation data, user accounts, password-reset records, sharing records, and audit history are managed by the backend.
+
+Do not expose the database, profile-picture directory, environment file, or application secrets publicly.
+
+## 11. Running the Test Suite
+
+Activate the virtual environment and run:
 
 ```bash
 python -m pytest -v
 ```
 
-The tests cover:
+Or use the concise output:
 
-- Agreement evaluation and invalid evaluation results.
-- Custom stakeholder names and dialogue orchestration.
-- Closing statements, speaker order, and turn numbering.
-- Invalid dialogue inputs and API failure handling.
-- Streamlit frontend behavior.
-- Cybersecurity Q&A API validation.
-- Q&A service response validation and relevance checks.
+```bash
+pytest -q
+```
 
-Most tests use mocked AI responses, allowing them to run without generating every response through a live Ollama model.
+The test suite covers:
 
-A passing test suite verifies the covered behavior but does not replace manual testing with the actual Ollama model.
+- Registration and login.
+- Authentication and authorization.
+- Password hashing and token handling.
+- Password recovery and email delivery.
+- Profile management and profile pictures.
+- Account lifecycle management.
+- Administrator operations and audit history.
+- Dialogue generation and response structure.
+- Agreement evaluation.
+- Cybersecurity Q&A validation and response handling.
+- Conversation history and ownership.
+- Sharing links, expiration, and revocation.
+- Frontend behavior.
+- Startup and configuration validation.
 
-## 9. Project Structure
+Most AI-related tests use mocked responses, so the test suite does not require every test to generate a live response through Ollama. A separate manual run with Ollama is still useful for checking real model behavior and performance.
+
+## 12. Project Structure
 
 ```text
 CyberTalk/
+│
 ├── main.py
-├── personas.py
+├── frontend.py
+├── config.py
+├── database.py
+│
+├── auth.py
+├── security.py
+├── user_model.py
+├── chat_history_model.py
+├── password_reset_model.py
+├── share_link_model.py
+├── audit_log_model.py
+│
 ├── agreement.py
 ├── agreement_evaluator.py
+├── personas.py
 ├── qa_service.py
-├── frontend.py
-├── test_dialogue.py
-├── test_agreement_evaluator.py
-├── test_frontend.py
-├── test_qa_api.py
-├── test_qa_service.py
+│
+├── email_service.py
+├── provision_initial_admin.py
+│
+├── styles/
+│   └── cybertalk.css
+│
+├── tests/
+│   ├── ai_api_test_helpers.py
+│   ├── test_admin_api.py
+│   ├── test_agreement_evaluator.py
+│   ├── test_ai_endpoint_authenticated.py
+│   ├── test_ai_endpoint_security.py
+│   ├── test_auth.py
+│   ├── test_change_password_api.py
+│   ├── test_chat_history_api.py
+│   ├── test_chat_history_model.py
+│   ├── test_config.py
+│   ├── test_dialogue.py
+│   ├── test_dialogue_response.py
+│   ├── test_email_service.py
+│   ├── test_frontend.py
+│   ├── test_login.py
+│   ├── test_password_reset_api.py
+│   ├── test_password_reset_model.py
+│   ├── test_profile.py
+│   ├── test_qa_api.py
+│   ├── test_qa_service.py
+│   ├── test_registration.py
+│   ├── test_security.py
+│   ├── test_share_links_api.py
+│   ├── test_startup.py
+│   └── test_user_model.py
+│
 ├── requirements.txt
-├── README.md
-└── .gitignore
+├── .env.example
+├── .gitignore
+└── README.md
 ```
 
-- `main.py`: FastAPI application, request validation, API endpoints, dialogue orchestration, and Ollama integration.
-- `personas.py`: Persona-related definitions retained by the project.
-- `agreement.py`: Structured agreement result model.
-- `agreement_evaluator.py`: Agreement evaluation logic.
-- `qa_service.py`: Cybersecurity question validation, relevance checks, and answer generation.
-- `frontend.py`: Streamlit user interface.
-- `test_dialogue.py`: Dialogue API and orchestration tests.
-- `test_agreement_evaluator.py`: Agreement evaluation tests.
-- `test_frontend.py`: Frontend behavior tests.
-- `test_qa_api.py`: Cybersecurity Q&A API tests.
-- `test_qa_service.py`: Q&A service tests.
-- `requirements.txt`: Python dependencies.
-- `.gitignore`: Files and directories excluded from version control.
+### Important modules
 
-The `.venv` directory is local and should not be committed to Git.
+| File | Responsibility |
+|---|---|
+| `main.py` | FastAPI application, authentication dependencies, API endpoints, dialogue orchestration, and Ollama integration |
+| `frontend.py` | Streamlit interface, workspaces, authentication UI, history, profile, and administrator dashboard |
+| `config.py` | Environment and Ollama configuration |
+| `database.py` | SQLite database connection, table creation, and schema migrations |
+| `auth.py` | JWT token creation and verification |
+| `security.py` | Password hashing and secure token utilities |
+| `user_model.py` | User account and profile data |
+| `chat_history_model.py` | Saved conversation records |
+| `password_reset_model.py` | Password-reset token records |
+| `share_link_model.py` | Conversation sharing records |
+| `audit_log_model.py` | Administrator audit records |
+| `agreement.py` | Agreement response schema |
+| `agreement_evaluator.py` | AI-powered agreement evaluation and consistency checks |
+| `qa_service.py` | Cybersecurity relevance validation and Q&A generation |
+| `email_service.py` | Password-reset email creation and SMTP delivery |
+| `provision_initial_admin.py` | Initial primary administrator setup |
+| `styles/cybertalk.css` | Shared frontend styling |
 
-## 10. Current Project Status
+## 13. Project Objective
 
-### Implemented
+CyberTalk demonstrates how locally hosted Generative AI can support structured cybersecurity decision-making between stakeholders with different responsibilities.
 
-- FastAPI backend and health endpoint.
-- Ollama-powered text generation.
-- User-defined stakeholder personas.
-- Configurable multi-round dialogue.
-- Closing statements for both stakeholders.
-- Structured agreement evaluation.
-- Cybersecurity question-and-answer service.
-- Streamlit frontend.
-- Input validation and API error handling.
-- Automated tests for the implemented components.
-
-### Possible future improvements
-
-- Add broader end-to-end tests using a live Ollama model.
-- Improve reliability of agreement evaluation and shared-decision generation.
-- Improve user-facing diagnostics for model timeouts and service availability.
-- Expand frontend usability and accessibility.
-
-## 11. Project Goal
-
-CyberTalk demonstrates how Generative AI can support structured cybersecurity discussions between stakeholders with different responsibilities, evaluate areas of agreement and disagreement, and identify practical next steps.
-
-The project is developed incrementally, with Git commits tracking implementation, testing, and documentation changes.
+By combining stakeholder dialogue, conservative agreement evaluation, cybersecurity Q&A, secure account management, and conversation history, the application provides a complete platform for exploring cybersecurity decisions and identifying practical areas of agreement.

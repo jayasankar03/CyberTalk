@@ -351,7 +351,7 @@ def render_cybertalk_logo():
     )
 
     with logo_col:
-        st.components.v1.html(
+                st.html(
             """
             <svg width="76" height="84" viewBox="0 0 100 110"
                  xmlns="http://www.w3.org/2000/svg">
@@ -370,9 +370,7 @@ def render_cybertalk_logo():
                       font-size="25" font-weight="bold"
                       text-anchor="middle">CT</text>
             </svg>
-            """,
-            height=120,
-            scrolling=False,
+            """
         )
 
     with title_col:
@@ -390,28 +388,33 @@ API_URL = os.getenv(
 
 AUTH_COOKIE_NAME = "cybertalk_access_token"
 
-cookie_controller = CookieController(
-    key="cybertalk_auth_cookies"
-)
+
+def get_cookie_controller():
+    """Initialize browser cookie support only when required."""
+
+    return CookieController(
+        key="cybertalk_auth_cookies"
+    )
+
 
 st.session_state.setdefault("access_token", None)
 
 
 def clear_authentication():
-
     """Clear both Streamlit and browser authentication state."""
 
     st.session_state["access_token"] = None
 
     try:
+        cookie_controller = get_cookie_controller()
+
         cookie_value = cookie_controller.get(AUTH_COOKIE_NAME)
 
         if cookie_value is not None:
             cookie_controller.remove(AUTH_COOKIE_NAME)
 
     except (TypeError, AttributeError):
-        # The cookie controller may not have browser cookie data
-        # available during Streamlit testing.
+        # Cookie data may not be available during Streamlit testing.
         pass
 
     st.session_state.pop("qa_result", None)
@@ -1374,6 +1377,8 @@ if not st.session_state.get("access_token"):
 
                             # Persist the JWT in the browser until its actual expiration.
                             expires_in = int(login_data.get("expires_in", 1800))
+
+                            cookie_controller = get_cookie_controller()
 
                             cookie_controller.set(
                                 AUTH_COOKIE_NAME,

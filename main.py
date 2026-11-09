@@ -166,7 +166,7 @@ def validate_profile_picture(file_content: bytes) -> str:
 
     if len(file_content) > MAX_PROFILE_PICTURE_SIZE:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="Profile picture must not exceed 5 MB.",
         )
 
